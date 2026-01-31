@@ -258,3 +258,7 @@ def chart_data(ticker: str):
 @app.get("/chart-page", response_class=HTMLResponse)
 def chart_page(request: Request):
     return templates.TemplateResponse("chart.html", {"request": request})
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
+
