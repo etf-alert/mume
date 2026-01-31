@@ -10,6 +10,26 @@ import json
 import os
 import yfinance as yf
 import pandas as pd
+
+from flask import Flask, render_template, jsonify
+import json
+
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return render_template("index.html")
+
+@app.route("/watchlist")
+def watchlist():
+    with open("watchlist.json") as f:
+        return jsonify(json.load(f))
+
+@app.route("/chart/<ticker>")
+def chart(ticker):
+    return render_template("chart.html", ticker=ticker)
+
+
 # =====================
 # DB 설정 (Cron용)
 # =====================
