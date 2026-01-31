@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>Watchlist App</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      background: #0f172a;
+      color: #e5e7eb;
+      font-family: -apple-system, BlinkMacSystemFont;
+    }
+
+    h1 { margin-bottom: 12px; }
+
+    .add-box {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .add-box input {
+      flex: 1;
+      background: #1e293b;
+      color: #e5e7eb;
+      border: 1px solid #334155;
+      padding: 8px 10px;
+      border-radius: 6px;
+    }
+
+    .add-box button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+
+    .table-wrap {
+      max-height: 70vh;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 0;
+      border-bottom: 1px solid #334155;
+      text-align: center;
+    }
+
+    th {
+      padding: 10px;
+      color: #93c5fd;
+      position: sticky;
+      top: 0;
+      background: #0f172a;
+      z-index: 10;
+    }
+
+    /* ✅ 티커 셀 전체를 버튼으로 */
+    .ticker-btn {
+      width: 100%;
+      height: 100%;
+      padding: 14px 10px;
+      background: none;
+      border: none;
+      color: #ffffff;        /* ✅ 흰색 */
+      font-weight: 700;      /* 살짝 더 굵게 */
+      font-size: 16px;       /* ✅ 글씨 크기 키움 */
+      letter-spacing: 0.5px;
+      cursor: pointer;
+    }
+
+    .ticker-btn:active {
+      background: #1e293b;
+      color: #ffffff;
+    }
+
+    .cell {
+      padding: 10px;
+    }
+
+    .change {
+      font-size: 0.85em;
+    }
+    .change.up { color: #22c55e; }
+    .change.down { color: #ef4444; }
+
+    .delete-btn {
+      color: red;
+      border: none;
+      background: none;
+      cursor: pointer;
+      padding: 10px;
+    }
+
+    #pullIndicator {
+      position: fixed;
+      top: -40px;
+      left: 0;
+      right: 0;
+      height: 40px;
+      background: #020617;
+      color: #93c5fd;
+      text-align: center;
+      line-height: 40px;
+      font-size: 13px;
+      z-index: 9999;
+      transition: top 0.2s;
+    }
+    
+  </style>
+</head>
+<body>
+
+<h1>📊 Watchlist</h1>
+  
+  <div id="pullIndicator">⬇️ 당겨서 새로고침</div>
+
+  <div class="add-box">
+    <input id="tickerInput" placeholder="티커 입력 (예: AAPL)" />
+    <button onclick="addTicker()">추가</button>
+  </div>
+
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th style="width:60px">Ticker</th>
+        <th>Price</th>
+        <th>RSI</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="tableBody">
+      <tr><td colspan="4" class="cell">불러오는 중...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+
+  function addTicker() {
+    const input = document.getElementById("tickerInput");
+    const ticker = input.value.trim();
+    if (!ticker) return;
+
+    fetch(`/tickers?ticker=${ticker}`, { method: "POST" })
+      .then(res => {
+        if (!res.ok) throw new Error();
+        input.value = "";
+        loadData();
+      })
+      .catch(() => alert("추가 실패 (중복 또는 오류)"));
+  }
+
+  
+async function loadData() {
+  const res = await fetch("/watchlist");
+  const data = await res.json();
+  const body = document.getElementById("tableBody");
+  body.innerHTML = "";
+
+  if (data.length === 0) {
+    body.innerHTML = "<tr><td colspan='4' class='cell'>데이터 없음</td></tr>";
+    return;
+  }
+
+  data.forEach(item => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>
+        <button class="ticker-btn"
+          onclick="location.href='/chart-page?ticker=${item.ticker}'">
+          ${item.ticker}
+        </button>
+      </td>
+
+      <td class="cell">
+        ${item.price}
+        <div class="change ${item.price_change < 0 ? 'down' : 'up'}">
+          (${item.price_change > 0 ? '+' : ''}${item.price_change},
+          ${item.price_change_pct > 0 ? '+' : ''}${item.price_change_pct}%)
+        </div>
+      </td>
+
+      <td class="cell">
+        ${item.rsi}
+        <div class="change ${item.rsi_change < 0 ? 'down' : 'up'}">
+          (${item.rsi_change > 0 ? '+' : ''}${item.rsi_change},
+          ${item.rsi_change_pct > 0 ? '+' : ''}${item.rsi_change_pct}%)
+        </div>
+      </td>
+
+      <td>
+        <button class="delete-btn"
+          onclick="deleteTicker('${item.ticker}')">✖</button>
+      </td>
+    `;
+    body.appendChild(tr);
+  });
+}
+
+function deleteTicker(ticker) {
+  if (!confirm(`${ticker} 삭제할까?`)) return;
+  fetch(`/tickers/${ticker}`, { method: "DELETE" })
+    .then(loadData);
+}
+
+  let startY = 0;
+  let pulling = false;
+  const indicator = document.getElementById("pullIndicator");
+
+  window.addEventListener("touchstart", e => {
+    if (window.scrollY === 0) {
+      startY = e.touches[0].clientY;
+      pulling = true;
+    }
+  });
+
+  window.addEventListener("touchmove", e => {
+    if (!pulling) return;
+    const diff = e.touches[0].clientY - startY;
+    if (diff > 0) {
+      indicator.style.top = Math.min(diff - 40, 10) + "px";
+      indicator.innerText = diff > 80 ? "🔄 놓으면 새로고침" : "⬇️ 당겨서 새로고침";
+    }
+  });
+
+  window.addEventListener("touchend", e => {
+    if (!pulling) return;
+    const diff = e.changedTouches[0].clientY - startY;
+    indicator.style.top = "-40px";
+    pulling = false;
+    if (diff > 80) {
+      location.reload();
+    }
+  });
+
+loadData();
+  
+</script>
+
+</body>
+</html>
