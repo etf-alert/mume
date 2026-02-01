@@ -1,7 +1,7 @@
 {
   "name": "Watchlist",
   "short_name": "Watchlist",
-  "start_url": "/index",
+  "start_url": "",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#0f172a",
