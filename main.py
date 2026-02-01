@@ -82,6 +82,7 @@ def order_preview(
     data: dict,
     user: str = Depends(get_current_user)
 ):
+    price_type = None
     side = data["side"]
     avg = float(data["avg_price"])
     cur = float(data["current_price"])
