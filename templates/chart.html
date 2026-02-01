@@ -133,7 +133,22 @@
       <div class="label">사용 금액 (80분할)</div>
       <div id="halfSplit" class="value">-</div>
     </div>
+
+    </div> <!-- 계산 box 끝 -->
+
+    <div class="box" style="margin-top:12px">
+      <button id="buyBtn" style="width:100%;padding:12px;font-size:18px;
+        font-weight:700;border-radius:10px;border:none;
+        background:#22c55e;color:#020617;">
+        🟢 매수
+      </button>
     
+      <button id="sellBtn" style="width:100%;padding:12px;font-size:18px;
+        font-weight:700;border-radius:10px;border:none;
+        background:#f87171;color:#020617;margin-top:8px">
+        🔴 매도
+      </button>
+    </div>  
   </div>
 </div>
 
@@ -346,6 +361,50 @@ avgInput.addEventListener("input", () => {
       location.reload();
     }
   });
+async function sendOrder(side) {
+  const seed = getSeed();
+  const avg  = getAvg();
+
+  if (!seed || !avg || !latestPrice) {
+    alert("시드 / 평단가 입력 필요");
+    return;
+  }
+
+  const res = await fetch("/api/order/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ticker,
+      side,                // BUY or SELL
+      avg_price: avg,
+      current_price: latestPrice,
+      seed
+    })
+  });
+
+  const data = await res.json();
+
+  const ok = confirm(
+    `📌 주문 확인\n\n` +
+    `종목: ${ticker}\n` +
+    `구분: ${side === "BUY" ? "매수" : "매도"}\n` +
+    `가격: $${data.price}\n` +
+    `수량: ${data.qty} 주\n\n` +
+    `이대로 주문할까?`
+  );
+
+  if (!ok) return;
+
+  const final = await fetch(`/api/order/confirm/${data.order_id}`, {
+    method: "POST"
+  });
+
+  const result = await final.json();
+  alert("✅ 주문 결과\n" + JSON.stringify(result, null, 2));
+}
+
+document.getElementById("buyBtn").onclick  = () => sendOrder("BUY");
+document.getElementById("sellBtn").onclick = () => sendOrder("SELL");
 
 </script>
 </body>
