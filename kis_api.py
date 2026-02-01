@@ -2,6 +2,7 @@
 import requests
 import os
 import time
+import yfinance as yf
 
 BASE_URL = "https://openapivts.koreainvestment.com:29443"
 
@@ -18,7 +19,26 @@ _token_cache = {
     "access_token": None,
     "expire_at": 0
 }
+# =====================
+# 거래소 판별
+# =====================
+def get_kis_exchange_code(ticker: str) -> str:
+    """
+    티커 기준으로 KIS 해외거래소 코드 자동 판별
+    """
+    info = yf.Ticker(ticker).info
+    exchange = info.get("exchange", "")
 
+    if exchange in ("NMS", "NASDAQ"):
+        return "NASD"
+    elif exchange in ("NYQ", "NYSE"):
+        return "NYSE"
+    elif exchange in ("ASE", "AMEX"):
+        return "AMEX"
+    else:
+        # fallback (대부분 NASDAQ)
+        return "NASD"
+        
 # =====================
 # Access Token
 # =====================
@@ -78,6 +98,8 @@ def get_overseas_avg_price(ticker: str):
 # =====================
 # 해외주식 주문
 # =====================
+from .exchange import get_kis_exchange_code
+
 def order_overseas_stock(
     ticker: str,
     price: float,
@@ -88,6 +110,7 @@ def order_overseas_stock(
     CANO, ACNT = ACCOUNT_NO.split("-")
 
     is_buy = side == "buy"
+    excg_cd = get_kis_exchange_code(ticker)
 
     headers = {
         "authorization": f"Bearer {token}",
@@ -101,7 +124,7 @@ def order_overseas_stock(
     body = {
         "CANO": CANO,
         "ACNT_PRDT_CD": ACNT,
-        "OVRS_EXCG_CD": "NASD",
+        "OVRS_EXCG_CD": excg_cd,
         "PDNO": ticker,
         "ORD_QTY": str(qty),
 
