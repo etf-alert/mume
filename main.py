@@ -276,8 +276,6 @@ def watchlist():
 @app.get("/api/avg-price/{ticker}")
 def avg_price(ticker: str):
     result = get_overseas_avg_price(ticker.upper())
-    if not result:
-        raise HTTPException(404, "보유 종목 아님")
     return result
 
 # =====================
