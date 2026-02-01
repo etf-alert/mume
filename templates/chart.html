@@ -191,7 +191,8 @@ if (savedAvg)  avgInput.value  = savedAvg;
 document.getElementById("title").innerText = `📈 ${ticker}`;
 
 let prices = [], rsis = [], labels = [], latestPrice = null;
-
+let holdQty = 0;
+  
 /* ===== 유틸 ===== */
 function onlyNumber(v) {
   v = v.replace(/[^0-9.]/g, "");
@@ -469,6 +470,10 @@ document.getElementById("buyBtn").onclick = async () => {
 };
 
 document.getElementById("sellBtn").onclick = () => {
+  if (holdQty <= 0) {
+    alert("❌ 매도 가능 수량이 없습니다");
+    return;
+  }
   sendOrder("SELL");
 };
 
