@@ -79,7 +79,6 @@ def get_overseas_avg_price(ticker: str):
     params = {
         "CANO": CANO,
         "ACNT_PRDT_CD": ACNT,
-        "OVRS_EXCG_CD": "NASD",
         "TR_CRCY_CD": "USD"
     }
 
@@ -88,11 +87,16 @@ def get_overseas_avg_price(ticker: str):
     data = res.json()
 
     for item in data.get("output1", []):
-        if item["ovrs_pdno"] == ticker:
-            return {
-                "avg_price": float(item["pchs_avg_pric"]),
-                "qty": int(float(item["hldg_qty"]))
-            }
+        if item.get("ovrs_pdno") == ticker.upper():
+        avg = item.get("pchs_avg_pric")
+        qty = item.get("hldg_qty")
+        if not avg or not qty:
+            return None
+        return {
+            "avg_price": float(avg),
+            "qty": int(float(qty)),
+            "excg": item.get("ovrs_excg_cd")  # ⭐ 중요
+        }
     return None
     
 # =====================
