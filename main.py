@@ -60,6 +60,20 @@ def order_preview(data: dict):
         "price": price,
         "qty": qty
     }
+
+@app.post("/api/order/confirm/{order_id}")
+def order_confirm(order_id: str):
+    if order_id not in ORDER_CACHE:
+        raise HTTPException(status_code=404, detail="Invalid order_id")
+
+    order = ORDER_CACHE.pop(order_id)
+
+    # 실제 주문 (지금은 테스트용으로만 반환)
+    return {
+        "status": "ok",
+        "order": order
+    }
+
     
 @app.post("/trade")
 def trade(
