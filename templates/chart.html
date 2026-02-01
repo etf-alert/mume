@@ -214,6 +214,13 @@ fetch(`/chart/${ticker}`)
     drawCharts();
     updateLevels();
   });
+  
+fetch(`/api/avg-price?ticker=${ticker}`)
+  .then(r => r.json())
+  .then(data => {
+    avgInput.value = "$" + data.avg_price.toFixed(2);
+    updateLevels();
+  });
 
 /* ===== 차트 ===== */
 function drawCharts() {
