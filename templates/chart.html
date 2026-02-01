@@ -412,11 +412,17 @@ async function sendOrder(side, mode = "DEFAULT") {
     }
 
     const data = await res.json();
+    function sideLabel(side) {
+      if (side === "BUY_AVG") return "평단가 매수 (LOC)";
+      if (side === "BUY_MARKET") return "큰 수 매수 (LOC)";
+      if (side === "SELL") return "평단가 +10% 매도";
+      return side;
+    }
 
     const ok = confirm(
       `📌 주문 확인\n\n` +
       `종목: ${ticker}\n` +
-      `구분: ${side}\n` +
+      `주문: ${sideLabel(side)}\n` +
       `가격: $${data.price}\n` +
       `수량: ${data.qty} 주\n\n` +
       `이대로 주문할까?`
