@@ -12,7 +12,36 @@ _token_cache = {
     "access_token": None,
     "expire_at": 0
 }
+def get_overseas_avg_price(ticker: str):
+    url = f"{KIS_BASE_URL}/uapi/overseas-stock/v1/trading/inquire-balance"
 
+    headers = {
+        "authorization": f"Bearer {os.environ['KIS_ACCESS_TOKEN']}",
+        "appkey": os.environ["KIS_APP_KEY"],
+        "appsecret": os.environ["KIS_APP_SECRET"],
+        "tr_id": "TTTS3012R",
+        "custtype": "P"
+    }
+
+    params = {
+        "CANO": os.environ["KIS_CANO"],        # 계좌번호 앞 8
+        "ACNT_PRDT_CD": os.environ["KIS_ACNT"], # 뒤 2
+        "OVRS_EXCG_CD": "NASD",                # NASDAQ
+        "TR_CRCY_CD": "USD"
+    }
+
+    r = requests.get(url, headers=headers, params=params)
+    r.raise_for_status()
+    data = r.json()
+
+    for item in data["output1"]:
+        if item["ovrs_pdno"] == ticker:
+            return {
+                "avg_price": float(item["pchs_avg_pric"]),
+                "qty": int(float(item["hldg_qty"]))
+            }
+
+    return None
 def get_access_token():
     now = time.time()
     if _token_cache["access_token"] and now < _token_cache["expire_at"]:
