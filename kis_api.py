@@ -1,69 +1,434 @@
-import requests
-import os
-import time
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chart</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      background: #0f172a;
+      color: #e5e7eb;
+      font-family: -apple-system, BlinkMacSystemFont;
+      padding: 12px;
+    }
+    h2 { margin-bottom: 10px; }
+    canvas {
+      background: #020617;
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+    .box {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+    .row.split { gap: 10px; }
+    .field { flex: 1; }
+    .field input { width: 90%; }
+    .label { color: #93c5fd; font-size: 14px; }
+    .value { font-weight: 600; }
+    input {
+      background: #020617;
+      color: #e5e7eb;
+      border: 1px solid #334155;
+      padding: 6px;
+      border-radius: 6px;
+      text-align: right;
+      font-size: 16px;
+    }
+    .sell { color: #facc15; }
+    .buy { color: #22c55e; }
+    .hint {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 1px;
+    }
+    
+    #pullIndicator {
+      position: fixed;
+      top: -40px;
+      left: 0;
+      right: 0;
+      height: 40px;
+      background: #020617;
+      color: #93c5fd;
+      text-align: center;
+      line-height: 40px;
+      font-size: 13px;
+      z-index: 9999;
+      transition: top 0.2s;
+    }
 
-BASE_URL = "https://openapivts.koreainvestment.com:29443"
+  </style>
+</head>
+<body>
 
-APP_KEY = os.getenv("KIS_APP_KEY")
-APP_SECRET = os.getenv("KIS_APP_SECRET")
-ACCOUNT_NO = os.getenv("KIS_ACCOUNT_NO")  # 예: 12345678-01
+<h2 id="title">📈 Chart</h2>
+<canvas id="priceChart" height="200"></canvas>
+<canvas id="rsiChart" height="120"></canvas>
 
-_token_cache = {
-    "access_token": None,
-    "expire_at": 0
+<div id="pullIndicator">⬇️ 당겨서 새로고침</div>
+
+<div class="box">
+  <div class="row">
+    <div class="label">현재가</div>
+    <div id="currentPrice" class="value">-</div>
+  </div>
+
+  <div class="row split">
+    <div class="field">
+      <div class="label">시드 금액</div>
+      <input id="seedInput" type="text" inputmode="decimal" placeholder="$0" />
+    </div>
+    <div class="field">
+      <div class="label">평단가</div>
+      <input id="avgInput" type="text" inputmode="decimal" placeholder="$0" />
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="label">매도가 (평단가 +10%)</div>
+    <div id="sellPrice" class="value sell">-</div>
+  </div>
+
+  <div class="row">
+    <div class="label">평단가 / 가능 수량</div>
+    <div id="avgBuyLine" class="value buy">-</div>
+  </div>
+
+  <div class="row">
+    <div class="label">LOC 큰 수 매수가 / 가능 수량</div>
+    <div id="locBuy" class="value buy">-</div>
+  </div>
+
+  <div class="hint">
+    ※ LOC 큰 수 매수가는 “평단가 +5%” 와 “현재가 +15%” 중 더 낮은 가격
+  </div>
+
+  <div class="row split">
+    <div class="field">
+      <div class="label">평단가 +5%</div>
+      <div id="avgPlus5" class="value">-</div>
+    </div>
+    <div class="field">
+      <div class="label">현재가 +15%</div>
+      <div id="pricePlus15" class="value">-</div>
+    </div>
+  </div>
+
+  <div class="row split">
+    <div class="field">
+      <div class="label">40분할 금액</div>
+      <div id="split40" class="value">-</div>
+    </div>
+    <div class="field">
+      <div class="label">사용 금액 (80분할)</div>
+      <div id="halfSplit" class="value">-</div>
+    </div>
+  </div>
+  <div class="box" style="margin-top:12px">
+    <button id="buyBtn" style="width:100%;padding:12px;font-size:18px;
+      font-weight:700;border-radius:10px;border:none;
+      background:#22c55e;color:#020617;">
+      🟢 매수
+    </button>
+    
+    <button id="sellBtn" style="width:100%;padding:12px;font-size:18px;
+      font-weight:700;border-radius:10px;border:none;
+      background:#f87171;color:#020617;margin-top:8px">
+      🔴 매도
+    </button>
+  </div>  
+</div>
+
+<script>
+/* ===== 기본 설정 ===== */
+const params = new URLSearchParams(location.search);
+const ticker = params.get("ticker");
+if (!ticker) {
+  alert("잘못된 접근입니다");
+  location.href = "/";
+}
+const SHOW_DAYS = 252;
+
+const seedInput = document.getElementById("seedInput");
+const avgInput  = document.getElementById("avgInput");
+
+const priceChartEl = document.getElementById("priceChart");
+const rsiChartEl   = document.getElementById("rsiChart");
+
+const currentPriceEl = document.getElementById("currentPrice");
+const sellPriceEl = document.getElementById("sellPrice");
+const avgPlus5El = document.getElementById("avgPlus5");
+const pricePlus15El = document.getElementById("pricePlus15");
+const locBuyEl = document.getElementById("locBuy");
+const split40El = document.getElementById("split40");
+const halfSplitEl = document.getElementById("halfSplit");
+    
+  /* ===== 입력값 복원 ===== */
+const savedSeed = localStorage.getItem(`seed_${ticker}`);
+const savedAvg  = localStorage.getItem(`avg_${ticker}`);
+
+if (savedSeed) seedInput.value = savedSeed;
+if (savedAvg)  avgInput.value  = savedAvg;
+
+  
+document.getElementById("title").innerText = `📈 ${ticker}`;
+
+let prices = [], rsis = [], labels = [], latestPrice = null;
+
+/* ===== 유틸 ===== */
+function onlyNumber(v) {
+  v = v.replace(/[^0-9.]/g, "");
+  const p = v.split(".");
+  if (p.length > 2) v = p[0] + "." + p.slice(1).join("");
+  return v;
+}
+function formatNumber(v) {
+  const [i, d] = v.split(".");
+  const int = i.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return d !== undefined ? `${int}.${d}` : int;
+}
+const getSeed = () => parseFloat(onlyNumber(seedInput.value) || "0");
+const getAvg  = () => parseFloat(onlyNumber(avgInput.value) || "0");
+
+/* ===== 데이터 로드 ===== */
+fetch(`/chart/${ticker}`)
+  .then(r => r.json())
+  .then(data => {
+    data.slice(-SHOW_DAYS).forEach(d => {
+      labels.push(d.date);
+      prices.push(d.price);
+      rsis.push(d.rsi);
+    });
+    latestPrice = prices.at(-1);
+    currentPriceEl.innerText = "$" + latestPrice.toFixed(2);
+    drawCharts();
+    updateLevels();
+  });
+  
+fetch(`/api/avg-price/${ticker}`)
+  .then(r => r.json())
+  .then(d => {
+    avgInput.value = "$" + d.avg_price.toFixed(2);
+    localStorage.setItem(`avg_${ticker}`, avgInput.value);
+    updateLevels();
+  })
+  .catch(() => {
+    // 보유 안 한 종목이면 그냥 수동 입력
+  });
+
+/* ===== 차트 ===== */
+function drawCharts() {
+  const xTick = (_, i) => {
+    const [y, m] = labels[i].split("-");
+    return `${y.slice(2)}.${parseInt(m)}`;
+  };
+
+  new Chart(priceChartEl, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "Price",
+        data: prices,
+        borderColor: "#60a5fa",
+        borderWidth: 2,
+        pointRadius: 0
+      }]
+    },
+    options: {
+      plugins: {
+        legend: {
+          labels: { color: "#e5e7eb" }
+        }
+      },
+      scales: {
+        x: {
+          ticks: {
+            maxTicksLimit: 6,
+            callback: xTick,
+            color: "#94a3b8"
+          }
+        },
+        y: {
+          ticks: { color: "#94a3b8" }
+        }
+      }
+    }
+  });
+
+  new Chart(rsiChartEl, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [{
+        label: "RSI (14)",
+        data: rsis,
+        borderColor: "#f87171",
+        borderWidth: 2,
+        pointRadius: 0
+      }]
+    },
+    options: {
+      plugins: {
+        legend: {
+          labels: { color: "#e5e7eb" }
+        }
+      },
+      scales: {
+        x: {
+          ticks: {
+            maxTicksLimit: 6,
+            callback: xTick,
+            color: "#94a3b8"
+          }
+        },
+        y: {
+          min: 10,
+          max: 80,
+          ticks: { color: "#94a3b8" }
+        }
+      }
+    }
+  });
 }
 
+/* ===== 계산 ===== */
+function updateLevels() {
+  const seed = getSeed();
+  const avg = getAvg();
+  if (!seed || !avg || !latestPrice) return;
 
-def get_access_token():
-    now = time.time()
-    if _token_cache["access_token"] and now < _token_cache["expire_at"]:
-        return _token_cache["access_token"]
+  const split40 = seed / 40;
+  const halfSplit = split40 / 2;
 
-    url = f"{BASE_URL}/oauth2/tokenP"
-    data = {
-        "grant_type": "client_credentials",
-        "appkey": APP_KEY,
-        "appsecret": APP_SECRET
+  const sell = avg * 1.10;
+  const avg5 = avg * 1.05;
+  const price15 = latestPrice * 1.15;
+  const locBuy = Math.min(avg5, price15);
+
+  const avgQty = Math.floor(halfSplit / avg);
+  const locQty = Math.floor(halfSplit / locBuy);
+
+  sellPriceEl.innerText = "$" + sell.toLocaleString(undefined,{maximumFractionDigits:2});
+  avgPlus5El.innerText = "$" + avg5.toLocaleString(undefined,{maximumFractionDigits:2});
+  pricePlus15El.innerText = "$" + price15.toLocaleString(undefined,{maximumFractionDigits:2});
+
+  document.getElementById("avgBuyLine").innerText =
+    "$" + avg.toLocaleString(undefined,{maximumFractionDigits:2}) + " / " + avgQty + " 주";
+
+  locBuyEl.innerText =
+    "$" + locBuy.toLocaleString(undefined,{maximumFractionDigits:2}) + " / " + locQty + " 주";
+
+  split40El.innerText = "$" + split40.toLocaleString(undefined,{maximumFractionDigits:2});
+  halfSplitEl.innerText = "$" + halfSplit.toLocaleString(undefined,{maximumFractionDigits:2});
+}
+
+/* ===== 입력 ===== */
+seedInput.addEventListener("input", () => {
+  const raw = onlyNumber(seedInput.value);
+  seedInput.value = raw ? "$" + formatNumber(raw) : "";
+  localStorage.setItem(`seed_${ticker}`, seedInput.value);
+  updateLevels();
+});
+
+avgInput.addEventListener("input", () => {
+  const raw = onlyNumber(avgInput.value);
+  avgInput.value = raw ? "$" + formatNumber(raw) : "";
+  localStorage.setItem(`avg_${ticker}`, avgInput.value);
+  updateLevels();
+});
+
+  let startY = 0;
+  let pulling = false;
+  const indicator = document.getElementById("pullIndicator");
+
+  window.addEventListener("touchstart", e => {
+    if (window.scrollY === 0) {
+      startY = e.touches[0].clientY;
+      pulling = true;
     }
+  });
 
-    res = requests.post(url, json=data)
-    res.raise_for_status()
-    j = res.json()
-
-    _token_cache["access_token"] = j["access_token"]
-    _token_cache["expire_at"] = now + j["expires_in"] - 60
-    return j["access_token"]
-
-
-def order_overseas_stock(
-    ticker: str,
-    price: float,
-    qty: int,
-    side: str   # "buy" | "sell"
-):
-    token = get_token()
-
-    tr_id = "VTTC0802U" if side == "buy" else "VTTC0801U"
-
-    headers = {
-        "authorization": f"Bearer {token}",
-        "appkey": APP_KEY,
-        "appsecret": APP_SECRET,
-        "tr_id": tr_id,
-        "custtype": "P"
+  window.addEventListener("touchmove", e => {
+    if (!pulling) return;
+    const diff = e.touches[0].clientY - startY;
+    if (diff > 0) {
+      indicator.style.top = Math.min(diff - 40, 10) + "px";
+      indicator.innerText = diff > 80 ? "🔄 놓으면 새로고침" : "⬇️ 당겨서 새로고침";
     }
+  });
 
-    body = {
-        "CANO": CANO,
-        "ACNT_PRDT_CD": ACNT,
-        "OVRS_EXCG_CD": "NASD",   # NASDAQ
-        "PDNO": ticker,
-        "ORD_QTY": str(qty),
-        "OVRS_ORD_UNPR": str(round(price, 2)),
-        "ORD_SVR_DVSN_CD": "0"
+  window.addEventListener("touchend", e => {
+    if (!pulling) return;
+    const diff = e.changedTouches[0].clientY - startY;
+    indicator.style.top = "-40px";
+    pulling = false;
+    if (diff > 80) {
+      location.reload();
     }
+  });
+async function sendOrder(side, mode = "DEFAULT") {
+  const seed = getSeed();
+  const avg  = getAvg();
+  if (!seed || !avg || !latestPrice) {
+    alert("시드 / 평단가 입력 필요");
+    return;
+  }
 
-    url = f"{KIS_VTS_BASE}/uapi/overseas-stock/v1/trading/order"
-    res = requests.post(url, headers=headers, json=body)
-    res.raise_for_status()
-    return res.json()
+  const body = {
+    ticker,
+    side,                 // "BUY" or "SELL"
+    avg_price: avg,
+    current_price: latestPrice,
+    seed,
+    mode                  // "LOC" | "AVG" | "DEFAULT"
+  };
+
+  const res = await fetch("/api/order/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+
+  const data = await res.json();
+
+  const ok = confirm(
+    `📌 주문 확인\n\n` +
+    `종목: ${ticker}\n` +
+    `구분: ${side === "BUY" ? "매수" : "매도"} (${mode})\n` +
+    `가격: $${data.price}\n` +
+    `수량: ${data.qty} 주\n\n` +
+    `이대로 주문할까?`
+  );
+
+  if (!ok) return;
+
+  const final = await fetch(`/api/order/execute/${data.order_id}`, {
+    method: "POST"
+  });
+
+  const result = await final.json();
+  alert("✅ 주문 결과\n" + JSON.stringify(result, null, 2));
+}
+document.getElementById("buyBtn").onclick = async () => {
+  await sendOrder("BUY_MARKET");
+  await sendOrder("BUY_AVG");
+};
+
+document.getElementById("sellBtn").onclick = () => {
+  sendOrder("SELL");
+};
+
+</script>
+</body>
+</html>
