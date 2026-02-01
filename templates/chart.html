@@ -413,7 +413,7 @@ async function sendOrder(side, mode = "DEFAULT") {
 
   if (!ok) return;
 
-  const final = await fetch(`/api/order/confirm/${data.order_id}`, {
+  const final = await fetch(`/api/order/execute/${data.order_id}`, {
     method: "POST"
   });
 
