@@ -1,13 +1,16 @@
+# kis_api.py
 import requests
 import os
 import time
 
-# ===== KIS 모의투자 서버 =====
 BASE_URL = "https://openapivts.koreainvestment.com:29443"
 
 APP_KEY = os.getenv("KIS_APP_KEY")
 APP_SECRET = os.getenv("KIS_APP_SECRET")
-ACCOUNT_NO = os.getenv("KIS_ACCOUNT_NO")  # 예: 12345678-01
+ACCOUNT_NO = os.getenv("KIS_ACCOUNT_NO")  # 12345678-01
+
+if not ACCOUNT_NO or "-" not in ACCOUNT_NO:
+    raise RuntimeError("KIS_ACCOUNT_NO must be like '12345678-01'")
 
 CANO, ACNT = ACCOUNT_NO.split("-")
 
@@ -16,7 +19,9 @@ _token_cache = {
     "expire_at": 0
 }
 
-# ===== 토큰 =====
+# =====================
+# Access Token
+# =====================
 def get_access_token():
     now = time.time()
     if _token_cache["access_token"] and now < _token_cache["expire_at"]:
@@ -37,7 +42,9 @@ def get_access_token():
     _token_cache["expire_at"] = now + j["expires_in"] - 60
     return j["access_token"]
 
-# ===== 해외주식 주문 (모의투자) =====
+# =====================
+# 해외주식 주문
+# =====================
 def order_overseas_stock(
     ticker: str,
     price: float,
@@ -46,10 +53,11 @@ def order_overseas_stock(
 ):
     token = get_access_token()
 
-    tr_id = "VTTC0802U" if side == "buy" else "VTTC0801U"
+    is_buy = side == "buy"
+
+    tr_id = "VTTC0802U" if is_buy else "VTTC0801U"
 
     headers = {
-        "Content-Type": "application/json",
         "authorization": f"Bearer {token}",
         "appkey": APP_KEY,
         "appsecret": APP_SECRET,
@@ -60,14 +68,19 @@ def order_overseas_stock(
     body = {
         "CANO": CANO,
         "ACNT_PRDT_CD": ACNT,
-        "OVRS_EXCG_CD": "NASD",        # NASDAQ
+        "OVRS_EXCG_CD": "NASD",
         "PDNO": ticker,
         "ORD_QTY": str(qty),
-        "OVRS_ORD_UNPR": f"{price:.2f}",
-        "ORD_SVR_DVSN_CD": "0"
+        "OVRS_ORD_UNPR": str(round(price, 2)),
+
+        # 🔥 핵심
+        # 매수 → LOC
+        # 매도 → 지정가
+        "ORD_SVR_DVSN_CD": "1" if is_buy else "0"
     }
 
     url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/order"
+
     res = requests.post(url, headers=headers, json=body)
     res.raise_for_status()
     return res.json()
