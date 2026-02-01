@@ -71,11 +71,22 @@ def order_preview(
         qty = int((seed / 80) // price)
 
     elif side == "SELL":
-        price = round(avg * 1.10, 2)
-
-        # ✅ 실제 보유 수량 조회
         pos = get_overseas_avg_price(ticker)
         qty = pos["qty"]
+        if qty <= 0:
+            raise HTTPException(400, "매도 가능 수량 없음")
+
+        target_price = round(avg * 1.10, 2)
+
+        # ✅ 현재가가 목표가보다 높은 경우
+        if cur > target_price:
+            price = round(cur, 2)
+            price_type = "MARKET_BETTER"
+            message = "현재가가 목표가(평단+10%)보다 높아 현재가로 매도합니다."
+        else:
+            price = target_price
+            price_type = "TARGET"
+            message = "목표가(평단+10%)로 매도합니다."
 
     else:
         raise HTTPException(400, "invalid side")
@@ -89,6 +100,8 @@ def order_preview(
         "price": price,
         "qty": qty,
         "ticker": ticker,
+        "price_type": price_type,
+        "message": message,
         "created_at": datetime.utcnow()
     }
     
@@ -98,9 +111,10 @@ def order_preview(
     return {
         "order_id": order_id,
         "price": price,
-        "qty": qty
+        "qty": qty,
+        "price_type": price_type,
+        "message": message
     }
-    
 
 @app.post("/api/order/execute/{order_id}")
 def execute_order(
@@ -111,19 +125,18 @@ def execute_order(
     if not order:
         raise HTTPException(404, "order not found")
 
+    # ✅ 만료 체크는 제일 먼저
+    if datetime.utcnow() - order["created_at"] > timedelta(minutes=5):
+        ORDER_CACHE.pop(order_id, None)
+        raise HTTPException(400, "order expired")
+
+    # ✅ 매도 수량 재검증
     if order["side"] == "SELL":
-
         pos = get_overseas_avg_price(order["ticker"])
-        real_qty = pos["qty"]
-
-        if order["qty"] > real_qty:
+        if order["qty"] > pos["qty"]:
             raise HTTPException(400, "보유 수량 부족")
 
     side = "buy" if order["side"].startswith("BUY") else "sell"
-
-        if datetime.utcnow() - order["created_at"] > timedelta(minutes=5):
-            ORDER_CACHE.pop(order_id, None)
-            raise HTTPException(400, "order expired")
 
     try:
         result = order_overseas_stock(
@@ -134,6 +147,7 @@ def execute_order(
         )
 
         ORDER_CACHE.pop(order_id, None)
+
         return {
             "status": "ok",
             "order": order,
@@ -142,6 +156,7 @@ def execute_order(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 # =====================
