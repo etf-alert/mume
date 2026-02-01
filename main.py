@@ -14,6 +14,7 @@ from kis_api import order_stock
 
 import json
 from uuid import uuid4
+app = FastAPI()
 ORDER_CACHE = {}
 @app.post("/api/order/preview")
 def order_preview(data: dict):
@@ -73,7 +74,6 @@ conn.commit()
 # =====================
 # FastAPI
 # =====================
-app = FastAPI()
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 # =====================
 # Watchlist 파일
