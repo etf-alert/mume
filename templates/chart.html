@@ -407,8 +407,10 @@ async function sendOrder(side) {
   const result = await final.json();
   alert("✅ 주문 결과\n" + JSON.stringify(result, null, 2));
 }
-
-document.getElementById("buyBtn").onclick  = () => sendOrder("BUY");
+document.getElementById("buyBtn").onclick = async () => {
+  await sendOrder("BUY_LOC");   // 지금 매수
+  await sendOrder("BUY_AVG");   // 평단가 매수
+};
 document.getElementById("sellBtn").onclick = () => sendOrder("SELL");
 
 </script>
