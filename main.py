@@ -21,17 +21,40 @@ def order_preview(data: dict):
     ticker = data["ticker"]
     side = data["side"]
     avg = float(data["avg_price"])
-    price = round(avg if side == "SELL" else min(avg*1.05, data["current_price"]*1.15), 2)
-    qty = int((data["seed"]/80) // price)
+    current = float(data["current_price"])
+    seed = float(data["seed"])
+
+    if side == "SELL":
+        price = avg
+
+    elif side == "BUY_AVG":
+        price = avg
+        qty = int((seed / 80) // price)
+
+    elif side == "BUY_LOC":
+        price = min(avg * 1.05, current * 1.15)
+        qty = int((seed / 80) // price)
+
+    else:
+        raise HTTPException(400, "invalid side")
+
     if qty <= 0:
         raise HTTPException(400, "수량 0")
+
     order_id = str(uuid4())
     ORDER_CACHE[order_id] = {
         "ticker": ticker,
         "side": side,
-        "price": price,
+        "price": round(price, 2),
         "qty": qty
     }
+
+    return {
+        "order_id": order_id,
+        "price": round(price, 2),
+        "qty": qty
+    }
+
     return {
         "order_id": order_id,
         "price": price,
