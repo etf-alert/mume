@@ -25,17 +25,26 @@ def order_preview(data: dict):
     avg = float(data["avg_price"])
     cur = float(data["current_price"])
     seed = float(data["seed"])
+    ticker = data["ticker"]
 
+    # ✅ 가격 결정
     if side == "BUY_MARKET":
-        price = round(cur, 2)
+        price = round(min(avg * 1.05, cur * 1.15), 2)
+        qty = int((seed / 80) // price)
+
     elif side == "BUY_AVG":
         price = round(avg, 2)
+        qty = int((seed / 80) // price)
+
     elif side == "SELL":
-        price = round(cur, 2)
+        price = round(avg * 1.10, 2)
+
+        # ✅ 실제 보유 수량 조회
+        qty = get_overseas_position(ticker)
+
     else:
         raise HTTPException(400, "invalid side")
 
-    qty = int((seed / 80) // price)
     if qty <= 0:
         raise HTTPException(400, "수량 0")
 
@@ -44,7 +53,7 @@ def order_preview(data: dict):
         "side": side,
         "price": price,
         "qty": qty,
-        "ticker": data["ticker"]
+        "ticker": ticker
     }
 
     return {
@@ -52,6 +61,7 @@ def order_preview(data: dict):
         "price": price,
         "qty": qty
     }
+
     
 @app.post("/api/order/execute/{order_id}")
 def execute_order(order_id: str):
