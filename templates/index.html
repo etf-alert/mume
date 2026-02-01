@@ -199,18 +199,12 @@ async function authFetch(url, options = {}) {
   return fetch(url, options);
 }
 
-window.onload = () => {
-  if (localStorage.getItem("token")) {
-    document.getElementById("login-box").style.display = "none";
-  }
-};
-  
   function addTicker() {
     const input = document.getElementById("tickerInput");
     const ticker = input.value.trim();
     if (!ticker) return;
 
-    authfetch(`/tickers?ticker=${ticker}`, { method: "POST" })
+    authFetch(`/tickers?ticker=${ticker}`, { method: "POST" })
       .then(res => {
         if (!res.ok) throw new Error();
         input.value = "";
@@ -267,7 +261,7 @@ async function loadData() {
 
 function deleteTicker(ticker) {
   if (!confirm(`${ticker} 삭제할까?`)) return;
-  authfetch(`/tickers/${ticker}`, { method: "DELETE" })
+  authFetch(`/tickers/${ticker}`, { method: "DELETE" })
     .then(loadData);
 }
 
