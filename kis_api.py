@@ -90,7 +90,7 @@ def get_overseas_avg_price(ticker: str):
     for item in data.get("output1", []):
         if item.get("ovrs_pdno") == ticker.upper():
             avg = item.get("pchs_avg_pric")
-            qty = item.get("hldg_qty")
+            qty = item.get("sell_psbl_qty")
 
             if avg and float(qty) > 0:
                 return {
@@ -174,10 +174,10 @@ def order_overseas_stock(
     return res.json()
 
 def sell_all_overseas_stock(ticker: str, price: float):
-    qty = get_overseas_avg_price(qty)
+    qty = get_overseas_avg_price(ticker)
 
     if qty <= 0:
-        return {"error": "보유 수량 없음"}
+        return {"error": "매도 가능 수량 없음"}
 
     return order_overseas_stock(
         ticker=ticker,
