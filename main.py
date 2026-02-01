@@ -143,6 +143,12 @@ def order_preview(
         "message": message
     }
 
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+
 @app.post("/api/order/execute/{order_id}")
 def execute_order(
     order_id: str,
