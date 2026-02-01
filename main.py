@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 import requests
+from pydantic import BaseModel
 from bs4 import BeautifulSoup
 import json
 import os
