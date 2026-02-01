@@ -308,6 +308,13 @@ def cron_save(secret: str = Query(...)):
 # =====================
 # API
 # =====================
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request}
+    )
+
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     user = require_login_page(request)
