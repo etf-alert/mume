@@ -23,14 +23,19 @@ if SECRET_KEY == "change-this":
     raise RuntimeError("JWT_SECRET not set")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-    
-def require_login_redirect(token: str = Depends(oauth2_scheme)):
+
+def require_login_page(request: Request):
+    token = request.cookies.get("access_token")
+
+    if not token:
+        return None
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload["sub"]
-    except Exception:
+        return payload.get("sub")
+    except JWTError:
         return None
-        
+
 def create_access_token(data: dict):
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=30)
@@ -41,6 +46,8 @@ def create_access_token(data: dict):
 app = FastAPI()
 ORDER_CACHE = {}
 
+from fastapi.responses import JSONResponse
+
 @app.post("/api/auth/login")
 def login(data: dict):
     user_id = data["id"]
@@ -50,7 +57,18 @@ def login(data: dict):
         raise HTTPException(401, "invalid credentials")
 
     token = create_access_token({"sub": user_id})
-    return { "access_token": token, "token_type": "bearer" }
+
+    res = JSONResponse({
+        "access_token": token,
+        "token_type": "bearer"
+    })
+    res.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        samesite="lax"
+    )
+    return res
     
 def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
@@ -291,15 +309,13 @@ def cron_save(secret: str = Query(...)):
 # API
 # =====================
 @app.get("/", response_class=HTMLResponse)
-def home(
-    request: Request,
-    user: str = Depends(require_login_redirect)
-):
+def home(request: Request):
+    user = require_login_page(request)
     if user:
         return RedirectResponse("/app", status_code=302)
 
     return templates.TemplateResponse(
-        "login.html",   # 👈 로그인 화면
+        "login.html",
         {"request": request}
     )
 
@@ -346,21 +362,15 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 @app.get("/app", response_class=HTMLResponse)
-def app_page(
-    request: Request,
-    user: str = Depends(require_login_redirect)
-):
+def app_page(request: Request):
+    user = require_login_page(request)
     if not user:
-        return templates.TemplateResponse(
-            "login.html",
-            {"request": request}
-        )
+        return RedirectResponse("/login", status_code=302)
 
     return templates.TemplateResponse(
-        "index.html",   # 👈 메인 앱
+        "index.html",
         {"request": request}
     )
-
         
 from fastapi.responses import JSONResponse
 
