@@ -1,9 +1,11 @@
 import sqlite3
-from datetime import date
-from fastapi import FastAPI, HTTPException, Query, Request
+from datetime import date, datetime, timedelta
+from fastapi import FastAPI, HTTPException, Query, Request, Depends
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.security import OAuth2PasswordBearer
+from jose import jwt, JWTError
 import requests
 from pydantic import BaseModel
 from bs4 import BeautifulSoup
@@ -12,15 +14,50 @@ import os
 import yfinance as yf
 import pandas as pd
 from kis_api import order_overseas_stock, get_overseas_avg_price
-import json
 from uuid import uuid4
+SECRET_KEY = os.getenv("JWT_SECRET", "change-this")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+if SECRET_KEY == "change-this":
+    raise RuntimeError("JWT_SECRET not set")
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=30)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 app = FastAPI()
 ORDER_CACHE = {}
+
 def normalize_side(side: str) -> str:
     return "buy" if side.startswith("BUY") else "sell"
+
+@app.post("/api/auth/login")
+def login(data: dict):
+    user_id = data["id"]
+    password = data["password"]
+
+    if user_id != os.getenv("ADMIN_ID") or password != os.getenv("ADMIN_PW"):
+        raise HTTPException(401, "invalid credentials")
+
+    token = create_access_token({"sub": user_id})
+    return { "access_token": token, "token_type": "bearer" }
     
+def get_current_user(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload["sub"]
+    except JWTError:
+        raise HTTPException(401, "invalid token")
+
 @app.post("/api/order/preview")
-def order_preview(data: dict):
+def order_preview(
+    data: dict,
+    user: str = Depends(get_current_user)
+):
     side = data["side"]
     avg = float(data["avg_price"])
     cur = float(data["current_price"])
@@ -53,7 +90,8 @@ def order_preview(data: dict):
         "side": side,
         "price": price,
         "qty": qty,
-        "ticker": ticker
+        "ticker": ticker,
+        "created_at": datetime.utcnow()
     }
 
     return {
@@ -61,11 +99,25 @@ def order_preview(data: dict):
         "price": price,
         "qty": qty
     }
+    if datetime.utcnow() - order["created_at"] > timedelta(minutes=5):
+        ORDER_CACHE.pop(order_id, None)
+        raise HTTPException(400, "order expired")
 
     
 @app.post("/api/order/execute/{order_id}")
-def execute_order(order_id: str):
+def execute_order(
+    order_id: str,
+    user: str = Depends(get_current_user)
+):
     order = ORDER_CACHE.get(order_id)
+    if not order:
+        raise HTTPException(404, "order not found")
+
+    if order["side"] == "SELL":
+        real_qty = get_overseas_avg_price(order["ticker"])
+        if order["qty"] > real_qty:
+            raise HTTPException(400, "보유 수량 부족")
+
     if not order:
         raise HTTPException(404, "order not found")
 
@@ -85,46 +137,7 @@ def execute_order(order_id: str):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/api/order/confirm/{order_id}")
-def order_confirm(order_id: str):
-    order = ORDER_CACHE.pop(order_id, None)
-    if not order:
-        raise HTTPException(404, "order not found")
-
-    side = "buy" if order["side"].startswith("BUY") else "sell"
-
-    result = order_overseas_stock(
-        ticker=order["ticker"],
-        price=order["price"],
-        qty=order["qty"],
-        side=side
-    )
-
-    return {
-        "status": "ok",
-        "order": order,
-        "result": result
-    }
-
-
-@app.post("/trade")
-def trade(
-    ticker: str = Query(...),
-    price: float = Query(...),
-    qty: int = Query(...),
-    side: str = Query(...)  # buy / sell
-):
-    if side not in ("buy", "sell"):
-        raise HTTPException(400, "side must be buy or sell")
-    try:
-        result = order_stock(ticker, price, qty, side)
-        return {
-            "status": "ok",
-            "result": result
-        }
-    except Exception as e:
-        raise HTTPException(500, str(e))
+    
 # =====================
 # DB 설정 (Cron용)
 # =====================
