@@ -194,6 +194,23 @@ let prices = [], rsis = [], labels = [], latestPrice = null;
 let holdQty = 0;
   
 /* ===== 유틸 ===== */
+function authFetch(url, options = {}) {
+  const token = localStorage.getItem("token");
+  if (!token) {
+    alert("로그인이 필요합니다");
+    location.href = "/";
+    throw new Error("No token");
+  }
+
+  options.headers = {
+    ...(options.headers || {}),
+    "Authorization": "Bearer " + token,
+    "Content-Type": "application/json"
+  };
+
+  return fetch(url, options);
+}
+
 function onlyNumber(v) {
   v = v.replace(/[^0-9.]/g, "");
   const p = v.split(".");
@@ -417,9 +434,8 @@ async function sendOrder(side, mode = "DEFAULT") {
       mode
     };
 
-    const res = await fetch("/api/order/preview", {
+    const res = await authFetch("/api/order/preview", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
     });
 
@@ -446,7 +462,7 @@ async function sendOrder(side, mode = "DEFAULT") {
     );
     if (!ok) return;
 
-    const final = await fetch(`/api/order/execute/${data.order_id}`, {
+    const final = await authFetch(`/api/order/execute/${data.order_id}`, {
       method: "POST"
     });
 
