@@ -1,92 +1,144 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8" />
-    <title>Login</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #111;
-            color: #fff;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-        }
-        .login-box {
-            background: #1e1e1e;
-            padding: 30px;
-            border-radius: 8px;
-            width: 300px;
-        }
-        h2 {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        input {
-            width: 100%;
-            padding: 10px;
-            margin-bottom: 12px;
-            border-radius: 4px;
-            border: none;
-        }
-        button {
-            width: 100%;
-            padding: 10px;
-            background: #4caf50;
-            color: #fff;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        .error {
-            color: #ff6b6b;
-            margin-top: 10px;
-            text-align: center;
-            display: none;
-        }
-    </style>
+  <meta charset="UTF-8" />
+
+  <!-- ✅ 모바일 / PWA -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#020617" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <title>Login</title>
+
+  <style>
+    * {
+      box-sizing: border-box; /* ✅ 길이 안 맞던 원인 해결 */
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto;
+      background: #020617;
+      color: #e5e7eb;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .login-box {
+      width: 100%;
+      max-width: 320px;
+      background: #0f172a;
+      padding: 24px;
+      border-radius: 12px;
+      border: 1px solid #334155;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+
+    .login-box h2 {
+      text-align: center;
+      margin-bottom: 18px;
+      font-size: 20px;
+    }
+
+    .login-box input,
+    .login-box button {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 12px;
+      border-radius: 8px;
+      font-size: 15px;
+    }
+
+    .login-box input {
+      background: #1e293b;
+      color: #e5e7eb;
+      border: 1px solid #334155;
+    }
+
+    .login-box input:focus {
+      outline: none;
+      border-color: #60a5fa;
+    }
+
+    .login-box button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .login-box button:active {
+      background: #1d4ed8;
+    }
+
+    .error {
+      text-align: center;
+      color: #f87171;
+      font-size: 13px;
+      margin-top: 6px;
+      display: none;
+    }
+  </style>
 </head>
+
 <body>
-    <div class="login-box">
-        <h2>로그인</h2>
-        <input id="userId" placeholder="아이디" />
-        <input id="password" type="password" placeholder="비밀번호" />
-        <button onclick="login()">로그인</button>
-        <div id="error" class="error">로그인 실패</div>
-    </div>
+  <div class="login-box">
+    <h2>🔐 로그인</h2>
 
-    <script>
-        async function login() {
-            const id = document.getElementById("userId").value;
-            const password = document.getElementById("password").value;
-            const error = document.getElementById("error");
+    <input id="userId" placeholder="아이디" autocomplete="username" />
+    <input id="password" type="password" placeholder="비밀번호" autocomplete="current-password" />
 
-            error.style.display = "none";
+    <button onclick="login()">로그인</button>
 
-            try {
-                const res = await fetch("/api/auth/login", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({ id, password })
-                });
+    <div id="error" class="error">아이디 또는 비밀번호가 틀렸어요</div>
+  </div>
 
-                if (!res.ok) {
-                    throw new Error("login failed");
-                }
+  <script>
+    async function login() {
+      const id = document.getElementById("userId").value.trim();
+      const password = document.getElementById("password").value;
+      const error = document.getElementById("error");
 
-                const data = await res.json();
-                localStorage.setItem("token", data.access_token);
+      error.style.display = "none";
 
-                // 로그인 성공 → 앱 화면 이동
-                location.href = "/app";
+      if (!id || !password) {
+        error.innerText = "아이디와 비밀번호를 입력하세요";
+        error.style.display = "block";
+        return;
+      }
 
-            } catch (e) {
-                error.style.display = "block";
-            }
-        }
-    </script>
+      try {
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, password })
+        });
+
+        if (!res.ok) throw new Error();
+
+        const data = await res.json();
+        localStorage.setItem("token", data.access_token);
+
+        location.href = "/app";
+      } catch {
+        error.innerText = "로그인 실패";
+        error.style.display = "block";
+      }
+    }
+
+    // ✅ Enter 키 로그인
+    document.addEventListener("keydown", e => {
+      if (e.key === "Enter") login();
+    });
+
+    // ✅ 자동 포커스
+    window.onload = () => {
+      document.getElementById("userId").focus();
+    };
+  </script>
 </body>
 </html>
