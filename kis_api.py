@@ -12,6 +12,21 @@ _token_cache = {
     "access_token": None,
     "expire_at": 0
 }
+
+KIS_BASE = "https://openapivts.koreainvestment.com:29443"
+
+def get_kis_token():
+    url = f"{KIS_BASE}/oauth2/tokenP"
+    body = {
+        "grant_type": "client_credentials",
+        "appkey": os.environ["KIS_APP_KEY"],
+        "appsecret": os.environ["KIS_APP_SECRET"]
+    }
+    res = requests.post(url, json=body)
+    if res.status_code != 200:
+        raise HTTPException(500, "KIS 토큰 발급 실패")
+    return res.json()["access_token"]
+
 def get_overseas_avg_price(ticker: str):
     url = f"{KIS_BASE_URL}/uapi/overseas-stock/v1/trading/inquire-balance"
 
