@@ -86,9 +86,13 @@ def order_overseas_stock(
 ):
     token = get_access_token()
 
-    is_buy = side == "buy"
-
-    tr_id = "VTTC0802U" if is_buy else "VTTC0801U"
+    # 🔥 주문 방식 결정
+    if side == "buy":
+        tr_id = "VTTC0802U"
+        ord_dvsn = "03"     # LOC
+    else:
+        tr_id = "VTTC0801U"
+        ord_dvsn = "00"     # 지정가
 
     headers = {
         "authorization": f"Bearer {token}",
@@ -103,17 +107,13 @@ def order_overseas_stock(
         "ACNT_PRDT_CD": ACNT,
         "OVRS_EXCG_CD": "NASD",
         "PDNO": ticker,
+        "ORD_DVSN": ord_dvsn,
         "ORD_QTY": str(qty),
         "OVRS_ORD_UNPR": str(round(price, 2)),
-
-        # 🔥 핵심
-        # 매수 → LOC
-        # 매도 → 지정가
-        "ORD_SVR_DVSN_CD": "1" if is_buy else "0"
+        "ORD_SVR_DVSN_CD": "0"
     }
 
     url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/order"
-
     res = requests.post(url, headers=headers, json=body)
     res.raise_for_status()
     return res.json()
