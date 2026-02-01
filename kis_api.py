@@ -39,15 +39,13 @@ def order_overseas_stock(
     ticker: str,
     price: float,
     qty: int,
-    side: str,            # "BUY" or "SELL"
-    exchange: str = "NASD"  # NASD, NYSE, AMEX
+    side: str   # "buy" | "sell"
 ):
-    token = get_access_token()
+    token = get_token()
 
-    tr_id = "VTTC0802U" if side == "BUY" else "VTTC0801U"
+    tr_id = "VTTC0802U" if side == "buy" else "VTTC0801U"
 
     headers = {
-        "Content-Type": "application/json",
         "authorization": f"Bearer {token}",
         "appkey": APP_KEY,
         "appsecret": APP_SECRET,
@@ -55,20 +53,17 @@ def order_overseas_stock(
         "custtype": "P"
     }
 
-    cano, acnt = ACCOUNT_NO.split("-")
-
     body = {
-        "CANO": cano,
-        "ACNT_PRDT_CD": acnt,
-        "OVRS_EXCG_CD": exchange,
+        "CANO": CANO,
+        "ACNT_PRDT_CD": ACNT,
+        "OVRS_EXCG_CD": "NASD",   # NASDAQ
         "PDNO": ticker,
         "ORD_QTY": str(qty),
-        "OVRS_ORD_UNPR": f"{price:.2f}",  # ✅ 해외주식 가격
-        "ORD_DVSN": "00"                  # 지정가
+        "OVRS_ORD_UNPR": str(round(price, 2)),
+        "ORD_SVR_DVSN_CD": "0"
     }
 
-    url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/order"
-
+    url = f"{KIS_VTS_BASE}/uapi/overseas-stock/v1/trading/order"
     res = requests.post(url, headers=headers, json=body)
     res.raise_for_status()
     return res.json()
