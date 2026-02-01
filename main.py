@@ -32,9 +32,6 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 app = FastAPI()
 ORDER_CACHE = {}
 
-def normalize_side(side: str) -> str:
-    return "buy" if side.startswith("BUY") else "sell"
-
 @app.post("/api/auth/login")
 def login(data: dict):
     user_id = data["id"]
@@ -77,7 +74,8 @@ def order_preview(
         price = round(avg * 1.10, 2)
 
         # ✅ 실제 보유 수량 조회
-        qty = get_overseas_position(ticker)
+        pos = get_overseas_avg_price(ticker)
+        qty = pos["qty"]
 
     else:
         raise HTTPException(400, "invalid side")
@@ -93,13 +91,17 @@ def order_preview(
         "ticker": ticker,
         "created_at": datetime.utcnow()
     }
-
+    
+    if len(ORDER_CACHE) > 1000:
+        ORDER_CACHE.clear()
+        
     return {
         "order_id": order_id,
         "price": price,
         "qty": qty
     }
     
+
 @app.post("/api/order/execute/{order_id}")
 def execute_order(
     order_id: str,
@@ -110,11 +112,18 @@ def execute_order(
         raise HTTPException(404, "order not found")
 
     if order["side"] == "SELL":
-        real_qty = get_overseas_avg_price(order["ticker"])
+
+        pos = get_overseas_avg_price(order["ticker"])
+        real_qty = pos["qty"]
+
         if order["qty"] > real_qty:
             raise HTTPException(400, "보유 수량 부족")
 
     side = "buy" if order["side"].startswith("BUY") else "sell"
+
+        if datetime.utcnow() - order["created_at"] > timedelta(minutes=5):
+            ORDER_CACHE.pop(order_id, None)
+            raise HTTPException(400, "order expired")
 
     try:
         result = order_overseas_stock(
@@ -123,27 +132,17 @@ def execute_order(
             qty=order["qty"],
             side=side
         )
+
+        ORDER_CACHE.pop(order_id, None)
         return {
             "status": "ok",
             "order": order,
             "result": result
         }
-        if datetime.utcnow() - order["created_at"] > timedelta(minutes=5):
-            ORDER_CACHE.pop(order_id, None)
-            raise HTTPException(400, "order expired")
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-result = order_overseas_stock(...)
-ORDER_CACHE.pop(order_id, None)
-return {
-    "status": "ok",
-    ...
-}
-
-if len(ORDER_CACHE) > 1000:
-    ORDER_CACHE.clear()
 
 # =====================
 # DB 설정 (Cron용)
