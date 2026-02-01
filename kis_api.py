@@ -2,7 +2,7 @@ import requests
 import os
 import time
 
-BASE_URL = "https://openapi.koreainvestment.com:9443"
+BASE_URL = "https://openapivts.koreainvestment.com:29443"
 
 APP_KEY = os.getenv("KIS_APP_KEY")
 APP_SECRET = os.getenv("KIS_APP_SECRET")
@@ -13,50 +13,7 @@ _token_cache = {
     "expire_at": 0
 }
 
-KIS_BASE = "https://openapivts.koreainvestment.com:29443"
 
-def get_kis_token():
-    url = f"{KIS_BASE}/oauth2/tokenP"
-    body = {
-        "grant_type": "client_credentials",
-        "appkey": os.environ["KIS_APP_KEY"],
-        "appsecret": os.environ["KIS_APP_SECRET"]
-    }
-    res = requests.post(url, json=body)
-    if res.status_code != 200:
-        raise HTTPException(500, "KIS 토큰 발급 실패")
-    return res.json()["access_token"]
-
-def get_overseas_avg_price(ticker: str):
-    url = f"{KIS_BASE_URL}/uapi/overseas-stock/v1/trading/inquire-balance"
-
-    headers = {
-        "authorization": f"Bearer {os.environ['KIS_ACCESS_TOKEN']}",
-        "appkey": os.environ["KIS_APP_KEY"],
-        "appsecret": os.environ["KIS_APP_SECRET"],
-        "tr_id": "TTTS3012R",
-        "custtype": "P"
-    }
-
-    params = {
-        "CANO": os.environ["KIS_CANO"],        # 계좌번호 앞 8
-        "ACNT_PRDT_CD": os.environ["KIS_ACNT"], # 뒤 2
-        "OVRS_EXCG_CD": "NASD",                # NASDAQ
-        "TR_CRCY_CD": "USD"
-    }
-
-    r = requests.get(url, headers=headers, params=params)
-    r.raise_for_status()
-    data = r.json()
-
-    for item in data["output1"]:
-        if item["ovrs_pdno"] == ticker:
-            return {
-                "avg_price": float(item["pchs_avg_pric"]),
-                "qty": int(float(item["hldg_qty"]))
-            }
-
-    return None
 def get_access_token():
     now = time.time()
     if _token_cache["access_token"] and now < _token_cache["expire_at"]:
@@ -68,6 +25,7 @@ def get_access_token():
         "appkey": APP_KEY,
         "appsecret": APP_SECRET
     }
+
     res = requests.post(url, json=data)
     res.raise_for_status()
     j = res.json()
@@ -76,34 +34,41 @@ def get_access_token():
     _token_cache["expire_at"] = now + j["expires_in"] - 60
     return j["access_token"]
 
-def order_stock(
+
+def order_overseas_stock(
     ticker: str,
     price: float,
     qty: int,
-    side: str  # "buy" or "sell"
+    side: str,            # "BUY" or "SELL"
+    exchange: str = "NASD"  # NASD, NYSE, AMEX
 ):
     token = get_access_token()
 
-    tr_id = "TTTC0802U" if side == "buy" else "TTTC0801U"
+    tr_id = "VTTC0802U" if side == "BUY" else "VTTC0801U"
 
     headers = {
         "Content-Type": "application/json",
         "authorization": f"Bearer {token}",
-        "appKey": APP_KEY,
-        "appSecret": APP_SECRET,
-        "tr_id": tr_id
+        "appkey": APP_KEY,
+        "appsecret": APP_SECRET,
+        "tr_id": tr_id,
+        "custtype": "P"
     }
+
+    cano, acnt = ACCOUNT_NO.split("-")
 
     body = {
-        "CANO": ACCOUNT_NO.split("-")[0],
-        "ACNT_PRDT_CD": ACCOUNT_NO.split("-")[1],
+        "CANO": cano,
+        "ACNT_PRDT_CD": acnt,
+        "OVRS_EXCG_CD": exchange,
         "PDNO": ticker,
-        "ORD_DVSN": "00",          # 지정가
         "ORD_QTY": str(qty),
-        "ORD_UNPR": str(int(price))
+        "OVRS_ORD_UNPR": f"{price:.2f}",  # ✅ 해외주식 가격
+        "ORD_DVSN": "00"                  # 지정가
     }
 
-    url = f"{BASE_URL}/uapi/domestic-stock/v1/trading/order-cash"
+    url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/order"
+
     res = requests.post(url, headers=headers, json=body)
     res.raise_for_status()
     return res.json()
