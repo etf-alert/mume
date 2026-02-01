@@ -18,47 +18,57 @@ app = FastAPI()
 ORDER_CACHE = {}
 @app.post("/api/order/preview")
 def order_preview(data: dict):
-    ticker = data["ticker"]
     side = data["side"]
     avg = float(data["avg_price"])
-    current = float(data["current_price"])
+    cur = float(data["current_price"])
     seed = float(data["seed"])
 
-    if side == "SELL":
-        price = avg
-
+    if side == "BUY_MARKET":
+        price = round(cur, 2)
     elif side == "BUY_AVG":
-        price = avg
-        qty = int((seed / 80) // price)
-
-    elif side == "BUY_LOC":
-        price = min(avg * 1.05, current * 1.15)
-        qty = int((seed / 80) // price)
-
+        price = round(avg, 2)
+    elif side == "SELL":
+        price = round(cur, 2)
     else:
         raise HTTPException(400, "invalid side")
 
+    qty = int((seed / 80) // price)
     if qty <= 0:
         raise HTTPException(400, "수량 0")
 
     order_id = str(uuid4())
     ORDER_CACHE[order_id] = {
-        "ticker": ticker,
         "side": side,
-        "price": round(price, 2),
-        "qty": qty
-    }
-
-    return {
-        "order_id": order_id,
-        "price": round(price, 2),
-        "qty": qty
+        "price": price,
+        "qty": qty,
+        "ticker": data["ticker"]
     }
 
     return {
         "order_id": order_id,
         "price": price,
         "qty": qty
+    }
+
+@app.post("/api/order/execute/{order_id}")
+def execute_order(order_id: str):
+    order = ORDER_CACHE.get(order_id)
+    if not order:
+        raise HTTPException(404, "order not found")
+
+    side = "buy" if order["side"].startswith("BUY") else "sell"
+
+    result = order_stock(
+        ticker=order["ticker"],
+        price=order["price"],
+        qty=order["qty"],
+        side=side,
+        mock=True        # 🔥 모의투자
+    )
+
+    return {
+        "status": "ok",
+        "result": result
     }
 
 @app.post("/api/order/confirm/{order_id}")
