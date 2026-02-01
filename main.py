@@ -99,10 +99,6 @@ def order_preview(
         "price": price,
         "qty": qty
     }
-    if datetime.utcnow() - order["created_at"] > timedelta(minutes=5):
-        ORDER_CACHE.pop(order_id, None)
-        raise HTTPException(400, "order expired")
-
     
 @app.post("/api/order/execute/{order_id}")
 def execute_order(
@@ -118,9 +114,6 @@ def execute_order(
         if order["qty"] > real_qty:
             raise HTTPException(400, "보유 수량 부족")
 
-    if not order:
-        raise HTTPException(404, "order not found")
-
     side = "buy" if order["side"].startswith("BUY") else "sell"
 
     try:
@@ -135,9 +128,23 @@ def execute_order(
             "order": order,
             "result": result
         }
+        if datetime.utcnow() - order["created_at"] > timedelta(minutes=5):
+            ORDER_CACHE.pop(order_id, None)
+            raise HTTPException(400, "order expired")
+    
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+result = order_overseas_stock(...)
+ORDER_CACHE.pop(order_id, None)
+return {
+    "status": "ok",
+    ...
+}
+
+if len(ORDER_CACHE) > 1000:
+    ORDER_CACHE.clear()
+
 # =====================
 # DB 설정 (Cron용)
 # =====================
