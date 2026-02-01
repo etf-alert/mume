@@ -377,25 +377,27 @@ avgInput.addEventListener("input", () => {
       location.reload();
     }
   });
-async function sendOrder(side) {
+async function sendOrder(side, mode = "DEFAULT") {
   const seed = getSeed();
   const avg  = getAvg();
-
   if (!seed || !avg || !latestPrice) {
     alert("시드 / 평단가 입력 필요");
     return;
   }
 
+  const body = {
+    ticker,
+    side,                 // "BUY" or "SELL"
+    avg_price: avg,
+    current_price: latestPrice,
+    seed,
+    mode                  // "LOC" | "AVG" | "DEFAULT"
+  };
+
   const res = await fetch("/api/order/preview", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      ticker,
-      side,                // BUY or SELL
-      avg_price: avg,
-      current_price: latestPrice,
-      seed
-    })
+    body: JSON.stringify(body)
   });
 
   const data = await res.json();
@@ -403,7 +405,7 @@ async function sendOrder(side) {
   const ok = confirm(
     `📌 주문 확인\n\n` +
     `종목: ${ticker}\n` +
-    `구분: ${side === "BUY" ? "매수" : "매도"}\n` +
+    `구분: ${side === "BUY" ? "매수" : "매도"} (${mode})\n` +
     `가격: $${data.price}\n` +
     `수량: ${data.qty} 주\n\n` +
     `이대로 주문할까?`
