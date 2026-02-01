@@ -158,12 +158,12 @@ def execute_order(
     if not order:
         raise HTTPException(404, "order not found")
 
-    # ✅ 만료 체크는 제일 먼저
+    # ⏰ 만료 체크
     if datetime.utcnow() - order["created_at"] > timedelta(minutes=5):
         ORDER_CACHE.pop(order_id, None)
         raise HTTPException(400, "order expired")
 
-    # ✅ 매도 수량 재검증
+    # 🔁 매도 수량 재검증
     if order["side"] == "SELL":
         pos = get_overseas_avg_price(order["ticker"])
         if order["qty"] > pos["qty"]:
@@ -188,21 +188,22 @@ def execute_order(
         }
 
     except Exception as e:
-    # KIS API 에러 메시지 최대한 추출
-    msg = "KIS 주문 오류"
-    
-    if hasattr(e, "response") and e.response is not None:
-        try:
-            msg = e.response.text
-        except Exception:
-            msg = str(e)
-    else:
-        msg = str(e)
+        # ✅ KIS 에러 메시지 최대한 그대로 전달
+        msg = "KIS 주문 오류"
 
-    raise HTTPException(
-        status_code=400,
-        detail=msg
-    )
+        if hasattr(e, "response") and e.response is not None:
+            try:
+                msg = e.response.text
+            except Exception:
+                msg = str(e)
+        else:
+            msg = str(e)
+
+        raise HTTPException(
+            status_code=400,
+            detail=msg
+        )
+
 
 # =====================
 # DB 설정 (Cron용)
