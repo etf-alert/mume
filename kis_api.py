@@ -101,7 +101,37 @@ def get_overseas_avg_price(ticker: str):
 
   return {
       "found": False
-  }            
+  }        
+  def get_overseas_position(ticker: str):
+    token = get_access_token()
+    url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/inquire-balance"
+
+    headers = {
+        "authorization": f"Bearer {token}",
+        "appkey": APP_KEY,
+        "appsecret": APP_SECRET,
+        "tr_id": "VTTS3012R",
+        "custtype": "P"
+    }
+
+    params = {
+        "CANO": CANO,
+        "ACNT_PRDT_CD": ACNT,
+        "OVRS_EXCG_CD": item.get("ovrs_excg_cd"),
+        "TR_CRCY_CD": "USD"
+    }
+
+    res = requests.get(url, headers=headers, params=params)
+    res.raise_for_status()
+    data = res.json()
+
+    for item in data.get("output1", []):
+        if item["ovrs_pdno"] == ticker.upper():
+            return int(float(item["hldg_qty"]))
+
+    return 0
+
+
 
 # =====================
 # 해외주식 주문
@@ -170,3 +200,17 @@ def order_overseas_stock(
     # 여기서 다시 에러 발생시킴
     res.raise_for_status()
     return res.json()
+
+def sell_all_overseas_stock(ticker: str, price: float):
+    qty = get_overseas_position(ticker)
+
+    if qty <= 0:
+        return {"error": "보유 수량 없음"}
+
+    return order_overseas_stock(
+        ticker=ticker,
+        price=price,
+        qty=qty,
+        side="sell"
+)
+
