@@ -82,73 +82,86 @@ def order_preview(
     data: dict,
     user: str = Depends(get_current_user)
 ):
-    price_type = None
-    side = data["side"]
-    avg = float(data["avg_price"])
-    cur = float(data["current_price"])
-    seed = float(data["seed"])
-    ticker = data["ticker"]
+    try:
+        # ✅ 기본값 (모든 분기에서 안전)
+        price_type = None
+        message = None
 
-    # ✅ 가격 결정
-    if side == "BUY_MARKET":
-        price = round(min(avg * 1.05, cur * 1.15), 2)
-        qty = int((seed / 80) // price)
+        side = data["side"]
+        avg = float(data["avg_price"])
+        cur = float(data["current_price"])
+        seed = float(data["seed"])
+        ticker = data["ticker"]
 
-    elif side == "BUY_AVG":
-        price = round(avg, 2)
-        qty = int((seed / 80) // price)
+        # ✅ 가격 결정
+        if side == "BUY_MARKET":
+            price = round(min(avg * 1.05, cur * 1.15), 2)
+            qty = int((seed / 80) // price)
+            price_type = "LOC"
+            message = "큰 수 매수 (LOC)"
 
-    elif side == "SELL":
-        pos = get_overseas_avg_price(ticker)
-        qty = pos["qty"]
-        if qty <= 0:
-            raise HTTPException(400, "매도 가능 수량 없음")
+        elif side == "BUY_AVG":
+            price = round(avg, 2)
+            qty = int((seed / 80) // price)
+            price_type = "LOC"
+            message = "평단가 매수 (LOC)"
 
-        target_price = round(avg * 1.10, 2)
+        elif side == "SELL":
+            pos = get_overseas_avg_price(ticker)
+            qty = pos["qty"]
 
-        # ✅ 현재가가 목표가보다 높은 경우
-        if cur > target_price:
-            price = round(cur, 2)
-            price_type = "MARKET_BETTER"
-            message = "현재가가 목표가(평단+10%)보다 높아 현재가로 매도합니다."
+            if qty <= 0:
+                raise HTTPException(400, "매도 가능 수량 없음")
+
+            target_price = round(avg * 1.10, 2)
+
+            if cur > target_price:
+                price = round(cur, 2)
+                price_type = "MARKET_BETTER"
+                message = "현재가가 목표가보다 높아 현재가로 매도"
+            else:
+                price = target_price
+                price_type = "TARGET"
+                message = "목표가(평단+10%)로 매도"
+
         else:
-            price = target_price
-            price_type = "TARGET"
-            message = "목표가(평단+10%)로 매도합니다."
+            raise HTTPException(400, "invalid side")
 
-    else:
-        raise HTTPException(400, "invalid side")
+        if qty <= 0:
+            raise HTTPException(400, "수량 0")
 
-    if qty <= 0:
-        raise HTTPException(400, "수량 0")
+        order_id = str(uuid4())
+        ORDER_CACHE[order_id] = {
+            "side": side,
+            "price": price,
+            "qty": qty,
+            "ticker": ticker,
+            "price_type": price_type,
+            "message": message,
+            "created_at": datetime.utcnow()
+        }
 
-    order_id = str(uuid4())
-    ORDER_CACHE[order_id] = {
-        "side": side,
-        "price": price,
-        "qty": qty,
-        "ticker": ticker,
-        "price_type": price_type,
-        "message": message,
-        "created_at": datetime.utcnow()
-    }
-    
-    if len(ORDER_CACHE) > 1000:
-        ORDER_CACHE.clear()
-        
-    return {
-        "order_id": order_id,
-        "price": price,
-        "qty": qty,
-        "price_type": price_type,
-        "message": message
-    }
+        if len(ORDER_CACHE) > 1000:
+            ORDER_CACHE.clear()
+
+        return {
+            "order_id": order_id,
+            "price": price,
+            "qty": qty,
+            "price_type": price_type,
+            "message": message
+        }
+
+    except HTTPException:
+        raise  # FastAPI용 에러는 그대로 던짐
 
     except Exception as e:
+        print("❌ order_preview error:", e)
         raise HTTPException(
-            status_code=400,
+            status_code=500,
             detail=str(e)
         )
+
 
 @app.post("/api/order/execute/{order_id}")
 def execute_order(
