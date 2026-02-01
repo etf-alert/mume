@@ -235,6 +235,18 @@ def watchlist():
             print(t, e)
     result.sort(key=lambda x: x["rsi"])
     return result
+@app.get("/api/avg-price")
+def get_avg_price(ticker: str):
+    balances = kis_get_overseas_balance()  # 네가 이미 쓰는 KIS 함수
+    for item in balances:
+        if item["ovrs_pdno"] == ticker:
+            return {
+                "avg_price": float(item["pchs_avg_pric"]),
+                "qty": int(item["hldg_qty"])
+            }
+    raise HTTPException(404, "보유 종목 아님")
+
+
 # =====================
 # 프론트
 # =====================
