@@ -11,7 +11,7 @@ import os
 import yfinance as yf
 import pandas as pd
 from kis_api import order_stock
-
+from kis_api import get_overseas_avg_price
 import json
 from uuid import uuid4
 app = FastAPI()
@@ -235,17 +235,13 @@ def watchlist():
             print(t, e)
     result.sort(key=lambda x: x["rsi"])
     return result
-@app.get("/api/avg-price")
-def get_avg_price(ticker: str):
-    balances = kis_get_overseas_balance()  # 네가 이미 쓰는 KIS 함수
-    for item in balances:
-        if item["ovrs_pdno"] == ticker:
-            return {
-                "avg_price": float(item["pchs_avg_pric"]),
-                "qty": int(item["hldg_qty"])
-            }
-    raise HTTPException(404, "보유 종목 아님")
-
+    
+@app.get("/api/avg-price/{ticker}")
+def avg_price(ticker: str):
+    result = get_overseas_avg_price(ticker.upper())
+    if not result:
+        raise HTTPException(404, "보유 종목 아님")
+    return result
 
 # =====================
 # 프론트
