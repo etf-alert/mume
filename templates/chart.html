@@ -421,10 +421,13 @@ async function sendOrder(side, mode = "DEFAULT") {
   alert("✅ 주문 결과\n" + JSON.stringify(result, null, 2));
 }
 document.getElementById("buyBtn").onclick = async () => {
-  await sendOrder("BUY", "LOC");  // LOC 가격 매수
-  await sendOrder("BUY", "AVG");  // 평단가 매수
+  await sendOrder("BUY_MARKET");
+  await sendOrder("BUY_AVG");
 };
-document.getElementById("sellBtn").onclick = () => sendOrder("SELL");
+
+document.getElementById("sellBtn").onclick = () => {
+  sendOrder("SELL");
+};
 
 </script>
 </body>
