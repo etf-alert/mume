@@ -10,6 +10,7 @@ import json
 import os
 import yfinance as yf
 import pandas as pd
+from kis_api import order_stock
 
 from flask import Flask, render_template, jsonify
 import json
@@ -58,6 +59,25 @@ def watchlist():
 @app.route("/chart/<ticker>")
 def chart(ticker):
     return render_template("chart.html", ticker=ticker)
+    
+@app.post("/trade")
+def trade(
+    ticker: str = Query(...),
+    price: float = Query(...),
+    qty: int = Query(...),
+    side: str = Query(...)  # buy / sell
+):
+    if side not in ("buy", "sell"):
+        raise HTTPException(400, "side must be buy or sell")
+
+    try:
+        result = order_stock(ticker, price, qty, side)
+        return {
+            "status": "ok",
+            "result": result
+        }
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 # =====================
