@@ -101,7 +101,7 @@
   </div>
 
   <div class="row">
-    <div class="label">매도가 (평단가 +10%)</div>
+    <div class="label">매도가 (평단가 +10%) / 보유 수량</div>
     <div id="sellPrice" class="value sell">-</div>
   </div>
 
@@ -113,10 +113,10 @@
   <div class="row">
     <div class="label">LOC 큰 수 매수가 / 가능 수량</div>
     <div id="locBuy" class="value buy">-</div>
+  </div>
   
   <div class="hint">
     ※ LOC 큰 수 매수가는 “평단가 +5%” 와 “현재가 +15%” 중 더 낮은 가격
-  </div>
   </div>
 
   <div class="row split">
@@ -227,6 +227,7 @@ fetch(`/api/avg-price/${ticker}`)
   .then(d => {
     if (d.found) {
       avgInput.value = "$" + d.avg_price.toFixed(2);
+      holdQty = d.qty;
       localStorage.setItem(`avg_${ticker}`, avgInput.value);
 
       avgStatusEl.innerText = "✅ 한국투자증권 계좌에서 가져옴";
@@ -239,6 +240,7 @@ fetch(`/api/avg-price/${ticker}`)
     updateLevels();
   })
   .catch(() => {
+    holdQty = 0;
     avgStatusEl.innerText =
       "❌ 평단가 조회 실패 (API 오류)";
     avgStatusEl.style.color = "#f87171"; // red
@@ -338,7 +340,7 @@ function updateLevels() {
   const avgQty = Math.floor(halfSplit / avg);
   const locQty = Math.floor(halfSplit / locBuy);
 
-  sellPriceEl.innerText = "$" + sell.toLocaleString(undefined,{maximumFractionDigits:2});
+  sellPriceEl.innerText = "$" + sell.toLocaleString(undefined, { maximumFractionDigits: 2 }) + " / " + holdQty + " 주";
   avgPlus5El.innerText = "$" + avg5.toLocaleString(undefined,{maximumFractionDigits:2});
   pricePlus15El.innerText = "$" + price15.toLocaleString(undefined,{maximumFractionDigits:2});
 
