@@ -84,6 +84,7 @@ def order_overseas_stock(
     qty: int,
     side: str   # "buy" | "sell"
 ):
+    assert side in ("buy", "sell")
     token = get_access_token()
 
     # 🔥 주문 방식 결정
