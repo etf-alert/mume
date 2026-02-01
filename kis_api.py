@@ -112,13 +112,17 @@ def order_overseas_stock(
     CANO, ACNT = ACCOUNT_NO.split("-")
 
     is_buy = side == "buy"
+    # 거래소 코드 (NASD / NYSE / AMEX)
     excg_cd = get_kis_exchange_code(ticker)
+
+    # ✅ 해외주식 모의투자 TR_ID
+    tr_id = "VTTS0308U" if is_buy else "VTTS0307U"
 
     headers = {
         "authorization": f"Bearer {token}",
         "appkey": APP_KEY,
         "appsecret": APP_SECRET,
-        "tr_id": "VTTC0802U" if is_buy else "VTTC0801U",
+        "tr_id": tr_id,
         "custtype": "P",
         "Content-Type": "application/json"
     }
@@ -131,9 +135,10 @@ def order_overseas_stock(
         "ORD_QTY": str(qty),
 
         # 🔥 주문 방식
-        "ORD_DVSN_CD": "31" if is_buy else "00",  # 매수=LOC / 매도=지정가
+        # 매수: LOC / 매도: 지정가
+        "ORD_DVSN_CD": "31" if is_buy else "00",
 
-        # 🔥 해외주식 가격 필드
+        # 🔥 해외주식 주문 가격 필드
         "OVRS_ORD_UNPR": f"{price:.2f}",
 
         # 기본값
@@ -143,6 +148,7 @@ def order_overseas_stock(
     url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/order"
 
     res = requests.post(url, headers=headers, json=body)
+
 
     print("===== KIS ORDER DEBUG =====")
     print("STATUS:", res.status_code)
