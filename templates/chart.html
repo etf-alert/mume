@@ -134,30 +134,35 @@
       <div id="halfSplit" class="value">-</div>
     </div>
   </div>
-</div>
-
-    <div class="box" style="margin-top:12px">
-      <button id="buyBtn" style="width:100%;padding:12px;font-size:18px;
-        font-weight:700;border-radius:10px;border:none;
-        background:#22c55e;color:#020617;">
-        🟢 매수
-      </button>
+  <div class="box" style="margin-top:12px">
+    <button id="buyBtn" style="width:100%;padding:12px;font-size:18px;
+      font-weight:700;border-radius:10px;border:none;
+      background:#22c55e;color:#020617;">
+      🟢 매수
+    </button>
     
-      <button id="sellBtn" style="width:100%;padding:12px;font-size:18px;
-        font-weight:700;border-radius:10px;border:none;
-        background:#f87171;color:#020617;margin-top:8px">
-        🔴 매도
-      </button>
-    </div>  
+    <button id="sellBtn" style="width:100%;padding:12px;font-size:18px;
+      font-weight:700;border-radius:10px;border:none;
+      background:#f87171;color:#020617;margin-top:8px">
+      🔴 매도
+    </button>
+  </div>  
 
-<script>
+  <script>
 /* ===== 기본 설정 ===== */
+if (!ticker) {
+  alert("잘못된 접근입니다");
+  location.href = "/";
+}
 const params = new URLSearchParams(location.search);
 const ticker = params.get("ticker");
 const SHOW_DAYS = 252;
 
 const seedInput = document.getElementById("seedInput");
 const avgInput  = document.getElementById("avgInput");
+
+const priceChartEl = document.getElementById("priceChart");
+const rsiChartEl   = document.getElementById("rsiChart");
 
 const currentPriceEl = document.getElementById("currentPrice");
 const sellPriceEl = document.getElementById("sellPrice");
@@ -215,7 +220,7 @@ function drawCharts() {
     return `${y.slice(2)}.${parseInt(m)}`;
   };
 
-  new Chart(priceChart, {
+  new Chart(priceChartEl, {
     type: "line",
     data: {
       labels,
@@ -248,7 +253,7 @@ function drawCharts() {
     }
   });
 
-  new Chart(rsiChart, {
+  new Chart(rsiChartEl, {
     type: "line",
     data: {
       labels,
