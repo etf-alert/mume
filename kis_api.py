@@ -41,7 +41,40 @@ def get_access_token():
     _token_cache["access_token"] = j["access_token"]
     _token_cache["expire_at"] = now + j["expires_in"] - 60
     return j["access_token"]
+    
+# =====================
+# 해외주식 평단가 조회
+# =====================
+def get_overseas_avg_price(ticker: str):
+    token = get_access_token()
 
+    url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/inquire-balance"
+    headers = {
+        "authorization": f"Bearer {token}",
+        "appkey": APP_KEY,
+        "appsecret": APP_SECRET,
+        "tr_id": "VTTS3012R",
+        "custtype": "P"
+    }
+    params = {
+        "CANO": CANO,
+        "ACNT_PRDT_CD": ACNT,
+        "OVRS_EXCG_CD": "NASD",
+        "TR_CRCY_CD": "USD"
+    }
+
+    res = requests.get(url, headers=headers, params=params)
+    res.raise_for_status()
+    data = res.json()
+
+    for item in data.get("output1", []):
+        if item["ovrs_pdno"] == ticker:
+            return {
+                "avg_price": float(item["pchs_avg_pric"]),
+                "qty": int(float(item["hldg_qty"]))
+            }
+    return None
+    
 # =====================
 # 해외주식 주문
 # =====================
