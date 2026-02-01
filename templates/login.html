@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8" />
+    <title>Login</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #111;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .login-box {
+            background: #1e1e1e;
+            padding: 30px;
+            border-radius: 8px;
+            width: 300px;
+        }
+        h2 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 12px;
+            border-radius: 4px;
+            border: none;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #4caf50;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .error {
+            color: #ff6b6b;
+            margin-top: 10px;
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <h2>로그인</h2>
+        <input id="userId" placeholder="아이디" />
+        <input id="password" type="password" placeholder="비밀번호" />
+        <button onclick="login()">로그인</button>
+        <div id="error" class="error">로그인 실패</div>
+    </div>
+
+    <script>
+        async function login() {
+            const id = document.getElementById("userId").value;
+            const password = document.getElementById("password").value;
+            const error = document.getElementById("error");
+
+            error.style.display = "none";
+
+            try {
+                const res = await fetch("/api/auth/login", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ id, password })
+                });
+
+                if (!res.ok) {
+                    throw new Error("login failed");
+                }
+
+                const data = await res.json();
+                localStorage.setItem("token", data.access_token);
+
+                // 로그인 성공 → 앱 화면 이동
+                location.href = "/app";
+
+            } catch (e) {
+                error.style.display = "block";
+            }
+        }
+    </script>
+</body>
+</html>
