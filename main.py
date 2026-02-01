@@ -14,6 +14,36 @@ import pandas as pd
 from flask import Flask, render_template, jsonify
 import json
 
+from uuid import uuid4
+
+ORDER_CACHE = {}
+
+@app.post("/api/order/preview")
+def order_preview(data: dict):
+    ticker = data["ticker"]
+    side = data["side"]
+    avg = float(data["avg_price"])
+    price = round(avg if side == "SELL" else min(avg*1.05, data["current_price"]*1.15), 2)
+
+    qty = int((data["seed"]/80) // price)
+    if qty <= 0:
+        raise HTTPException(400, "수량 0")
+
+    order_id = str(uuid4())
+    ORDER_CACHE[order_id] = {
+        "ticker": ticker,
+        "side": side,
+        "price": price,
+        "qty": qty
+    }
+
+    return {
+        "order_id": order_id,
+        "price": price,
+        "qty": qty
+    }
+
+
 app = Flask(__name__)
 
 @app.route("/")
