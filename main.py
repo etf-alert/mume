@@ -21,7 +21,14 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 if SECRET_KEY == "change-this":
     raise RuntimeError("JWT_SECRET not set")
-
+    
+def require_login_redirect(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload["sub"]
+    except Exception:
+        return None
+        
 def create_access_token(data: dict):
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=30)
@@ -282,11 +289,18 @@ def cron_save(secret: str = Query(...)):
 # API
 # =====================
 @app.get("/", response_class=HTMLResponse)
-def home(request: Request):
+def home(
+    request: Request,
+    user: str = Depends(require_login_redirect)
+):
+    if user:
+        return RedirectResponse("/app", status_code=302)
+
     return templates.TemplateResponse(
-        "index.html",
+        "login.html",   # 👈 로그인 화면
         {"request": request}
     )
+
 @app.get("/tickers")
 def get_tickers():
     return {"tickers": WATCHLIST}
@@ -332,9 +346,19 @@ templates = Jinja2Templates(directory="templates")
 @app.get("/app", response_class=HTMLResponse)
 def app_page(
     request: Request,
-    user: str = Depends(get_current_user)
-    ):        
-    return templates.TemplateResponse("index.html", {"request": request})
+    user: str = Depends(require_login_redirect)
+):
+    if not user:
+        return templates.TemplateResponse(
+            "login.html",
+            {"request": request}
+        )
+
+    return templates.TemplateResponse(
+        "index.html",   # 👈 메인 앱
+        {"request": request}
+    )
+
         
 from fastapi.responses import JSONResponse
 
