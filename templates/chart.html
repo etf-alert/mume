@@ -147,15 +147,16 @@
       🔴 매도
     </button>
   </div>  
+</div>
 
-  <script>
+<script>
 /* ===== 기본 설정 ===== */
+const params = new URLSearchParams(location.search);
+const ticker = params.get("ticker");
 if (!ticker) {
   alert("잘못된 접근입니다");
   location.href = "/";
 }
-const params = new URLSearchParams(location.search);
-const ticker = params.get("ticker");
 const SHOW_DAYS = 252;
 
 const seedInput = document.getElementById("seedInput");
@@ -171,6 +172,7 @@ const pricePlus15El = document.getElementById("pricePlus15");
 const locBuyEl = document.getElementById("locBuy");
 const split40El = document.getElementById("split40");
 const halfSplitEl = document.getElementById("halfSplit");
+    
   /* ===== 입력값 복원 ===== */
 const savedSeed = localStorage.getItem(`seed_${ticker}`);
 const savedAvg  = localStorage.getItem(`avg_${ticker}`);
