@@ -378,48 +378,64 @@ avgInput.addEventListener("input", () => {
     }
   });
 async function sendOrder(side, mode = "DEFAULT") {
-  const seed = getSeed();
-  const avg  = getAvg();
-  if (!seed || !avg || !latestPrice) {
-    alert("시드 / 평단가 입력 필요");
-    return;
+  try {
+    const seed = getSeed();
+    const avg  = getAvg();
+    if (!seed || !avg || !latestPrice) {
+      alert("시드 / 평단가 입력 필요");
+      return;
+    }
+
+    const body = {
+      ticker,
+      side,
+      avg_price: avg,
+      current_price: latestPrice,
+      seed,
+      mode
+    };
+
+    const res = await fetch("/api/order/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(t);
+    }
+
+    const data = await res.json();
+
+    const ok = confirm(
+      `📌 주문 확인\n\n` +
+      `종목: ${ticker}\n` +
+      `구분: ${side}\n` +
+      `가격: $${data.price}\n` +
+      `수량: ${data.qty} 주\n\n` +
+      `이대로 주문할까?`
+    );
+    if (!ok) return;
+
+    const final = await fetch(`/api/order/execute/${data.order_id}`, {
+      method: "POST"
+    });
+
+    if (!final.ok) {
+      const t = await final.text();
+      throw new Error(t);
+    }
+
+    const result = await final.json();
+    alert("✅ 주문 완료\n" + JSON.stringify(result, null, 2));
+
+  } catch (e) {
+    alert("❌ 주문 실패\n" + e.message);
+    console.error(e);
   }
-
-  const body = {
-    ticker,
-    side,                 // "BUY" or "SELL"
-    avg_price: avg,
-    current_price: latestPrice,
-    seed,
-    mode                  // "LOC" | "AVG" | "DEFAULT"
-  };
-
-  const res = await fetch("/api/order/preview", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-
-  const data = await res.json();
-
-  const ok = confirm(
-    `📌 주문 확인\n\n` +
-    `종목: ${ticker}\n` +
-    `구분: ${side === "BUY" ? "매수" : "매도"} (${mode})\n` +
-    `가격: $${data.price}\n` +
-    `수량: ${data.qty} 주\n\n` +
-    `이대로 주문할까?`
-  );
-
-  if (!ok) return;
-
-  const final = await fetch(`/api/order/confirm/${data.order_id}`, {
-    method: "POST"
-  });
-
-  const result = await final.json();
-  alert("✅ 주문 결과\n" + JSON.stringify(result, null, 2));
 }
+
 document.getElementById("buyBtn").onclick = async () => {
   await sendOrder("BUY_MARKET");
   await sendOrder("BUY_AVG");
