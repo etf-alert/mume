@@ -302,6 +302,16 @@ function deleteTicker(ticker) {
   });
 
 loadData();
+
+fetch("/api/order/preview", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer " + localStorage.getItem("token")
+  },
+  body: JSON.stringify(data)
+})
+
   
 </script>
 
