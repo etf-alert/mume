@@ -125,6 +125,14 @@
   </style>
 </head>
 <body>
+  
+<div id="login-box">
+  <h3>로그인</h3>
+  <input id="login-id" placeholder="ID" />
+  <input id="login-pw" type="password" placeholder="Password" />
+  <button onclick="login()">로그인</button>
+  <p id="login-status"></p>
+</div>
 
 <h1>📊 Watchlist</h1>
   
@@ -152,7 +160,51 @@
 </div>
 
 <script>
+async function login() {
+  const id = document.getElementById("login-id").value;
+  const pw = document.getElementById("login-pw").value;
 
+  const res = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, password: pw })
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    document.getElementById("login-status").innerText = "로그인 실패";
+    return;
+  }
+
+  localStorage.setItem("token", data.access_token);
+  document.getElementById("login-status").innerText = "로그인 성공";
+  document.getElementById("login-box").style.display = "none";
+}
+
+async function authFetch(url, options = {}) {
+  const token = localStorage.getItem("token");
+
+  if (!token) {
+    alert("로그인이 필요합니다");
+    throw new Error("No token");
+  }
+
+  options.headers = {
+    ...(options.headers || {}),
+    "Authorization": "Bearer " + token,
+    "Content-Type": "application/json"
+  };
+
+  return fetch(url, options);
+}
+
+window.onload = () => {
+  if (localStorage.getItem("token")) {
+    document.getElementById("login-box").style.display = "none";
+  }
+};
+  
   function addTicker() {
     const input = document.getElementById("tickerInput");
     const ticker = input.value.trim();
@@ -167,7 +219,6 @@
       .catch(() => alert("추가 실패 (중복 또는 오류)"));
   }
 
-  
 async function loadData() {
   const res = await fetch("/watchlist");
   const data = await res.json();
