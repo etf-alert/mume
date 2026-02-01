@@ -438,10 +438,15 @@ async function sendOrder(side, mode = "DEFAULT") {
       method: "POST",
       body: JSON.stringify(body)
     });
-
     if (!res.ok) {
-      const t = await res.text();
-      throw new Error(t);
+      let err;
+      try {
+        const j = await res.json();
+        err = j.detail || JSON.stringify(j);
+      } catch {
+        err = await res.text();
+      }
+      throw new Error(err);
     }
 
     const data = await res.json();
@@ -467,8 +472,14 @@ async function sendOrder(side, mode = "DEFAULT") {
     });
 
     if (!final.ok) {
-      const t = await final.text();
-      throw new Error(t);
+      let err;
+      try {
+        const j = await final.json();
+        err = j.detail || JSON.stringify(j);
+      } catch {
+        err = await final.text();
+      }
+      throw new Error(err);
     }
 
     const result = await final.json();
