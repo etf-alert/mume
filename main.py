@@ -182,9 +182,21 @@ def execute_order(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    # KIS API 에러 메시지 최대한 추출
+    msg = "KIS 주문 오류"
+    
+    if hasattr(e, "response") and e.response is not None:
+        try:
+            msg = e.response.text
+        except Exception:
+            msg = str(e)
+    else:
+        msg = str(e)
 
-
+    raise HTTPException(
+        status_code=400,
+        detail=msg
+    )
 
 # =====================
 # DB 설정 (Cron용)
