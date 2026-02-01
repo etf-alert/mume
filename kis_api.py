@@ -185,4 +185,3 @@ def sell_all_overseas_stock(ticker: str, price: float):
         qty=qty,
         side="sell"
 )
-
