@@ -11,7 +11,7 @@ import os
 import yfinance as yf
 import pandas as pd
 from kis_api import order_stock
-from flask import Flask, render_template, jsonify
+
 import json
 from uuid import uuid4
 ORDER_CACHE = {}
@@ -36,17 +36,6 @@ def order_preview(data: dict):
         "price": price,
         "qty": qty
     }
-app = Flask(__name__)
-@app.route("/")
-def home():
-    return render_template("index.html")
-@app.route("/watchlist")
-def watchlist():
-    with open("watchlist.json") as f:
-        return jsonify(json.load(f))
-@app.route("/chart/<ticker>")
-def chart(ticker):
-    return render_template("chart.html", ticker=ticker)
     
 @app.post("/trade")
 def trade(
@@ -226,12 +215,15 @@ def watchlist():
 # =====================
 # 프론트
 # =====================
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
 @app.get("/app", response_class=HTMLResponse)
 def app_page(request: Request):
     return templates.TemplateResponse("app.html", {"request": request})
 from fastapi.responses import JSONResponse
+
 @app.get("/chart/{ticker}")
 def chart_data(ticker: str):
     df = yf.download(ticker,
@@ -258,6 +250,7 @@ def chart_data(ticker: str):
             "rsi": round(float(rsi_series.iloc[i]), 2)
         })
     return JSONResponse(data)
+    
 @app.get("/chart-page", response_class=HTMLResponse)
 def chart_page(request: Request):
     return templates.TemplateResponse("chart.html", {"request": request})
