@@ -144,10 +144,19 @@ def order_overseas_stock(
 
     res = requests.post(url, headers=headers, json=body)
 
-    # 🔥 디버그용 (한번만 찍어봐)
-    if res.status_code != 200:
-        print("KIS ERROR STATUS:", res.status_code)
-        print("KIS ERROR BODY:", res.text)
+    print("===== KIS ORDER DEBUG =====")
+    print("STATUS:", res.status_code)
+    print("URL:", url)
+    print("HEADERS:", headers)
+    print("BODY:", body)
 
+    try:
+        print("RESPONSE JSON:", res.json())
+    except Exception:
+        print("RESPONSE TEXT:", res.text)
+
+    print("==========================")
+
+    # 여기서 다시 에러 발생시킴
     res.raise_for_status()
     return res.json()
