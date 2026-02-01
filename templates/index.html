@@ -210,7 +210,7 @@ window.onload = () => {
     const ticker = input.value.trim();
     if (!ticker) return;
 
-    fetch(`/tickers?ticker=${ticker}`, { method: "POST" })
+    authfetch(`/tickers?ticker=${ticker}`, { method: "POST" })
       .then(res => {
         if (!res.ok) throw new Error();
         input.value = "";
@@ -267,7 +267,7 @@ async function loadData() {
 
 function deleteTicker(ticker) {
   if (!confirm(`${ticker} 삭제할까?`)) return;
-  fetch(`/tickers/${ticker}`, { method: "DELETE" })
+  authfetch(`/tickers/${ticker}`, { method: "DELETE" })
     .then(loadData);
 }
 
@@ -301,18 +301,13 @@ function deleteTicker(ticker) {
     }
   });
 
-loadData();
+window.onload = () => {
+  if (localStorage.getItem("token")) {
+    document.getElementById("login-box").style.display = "none";
+    loadData();
+  }
+};
 
-fetch("/api/order/preview", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "Authorization": "Bearer " + localStorage.getItem("token")
-  },
-  body: JSON.stringify(data)
-})
-
-  
 </script>
 
 </body>
