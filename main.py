@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import date, datetime, timedelta
 from fastapi import FastAPI, HTTPException, Query, Request, Depends
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import OAuth2PasswordBearer
@@ -330,8 +330,12 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 @app.get("/app", response_class=HTMLResponse)
-def app_page(request: Request):
+def app_page(
+    request: Request,
+    user: str = Depends(get_current_user)
+    ):        
     return templates.TemplateResponse("index.html", {"request": request})
+        
 from fastapi.responses import JSONResponse
 
 @app.get("/chart/{ticker}")
