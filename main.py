@@ -21,6 +21,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 if SECRET_KEY == "change-this":
     raise RuntimeError("JWT_SECRET not set")
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
     
 def require_login_redirect(token: str = Depends(oauth2_scheme)):
     try:
@@ -35,7 +37,7 @@ def create_access_token(data: dict):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
 app = FastAPI()
 ORDER_CACHE = {}
 
