@@ -84,23 +84,18 @@ def order_overseas_stock(
     qty: int,
     side: str   # "buy" | "sell"
 ):
-    assert side in ("buy", "sell")
     token = get_access_token()
+    CANO, ACNT = ACCOUNT_NO.split("-")
 
-    # 🔥 주문 방식 결정
-    if side == "buy":
-        tr_id = "VTTC0802U"
-        ord_dvsn = "03"     # LOC
-    else:
-        tr_id = "VTTC0801U"
-        ord_dvsn = "00"     # 지정가
+    is_buy = side == "buy"
 
     headers = {
         "authorization": f"Bearer {token}",
         "appkey": APP_KEY,
         "appsecret": APP_SECRET,
-        "tr_id": tr_id,
-        "custtype": "P"
+        "tr_id": "VTTC0802U" if is_buy else "VTTC0801U",
+        "custtype": "P",
+        "Content-Type": "application/json"
     }
 
     body = {
@@ -108,13 +103,26 @@ def order_overseas_stock(
         "ACNT_PRDT_CD": ACNT,
         "OVRS_EXCG_CD": "NASD",
         "PDNO": ticker,
-        "ORD_DVSN": ord_dvsn,
         "ORD_QTY": str(qty),
-        "OVRS_ORD_UNPR": str(round(price, 2)),
+
+        # 🔥 주문 방식
+        "ORD_DVSN_CD": "31" if is_buy else "00",  # 매수=LOC / 매도=지정가
+
+        # 🔥 해외주식 가격 필드
+        "OVRS_ORD_UNPR": f"{price:.2f}",
+
+        # 기본값
         "ORD_SVR_DVSN_CD": "0"
     }
 
     url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/order"
+
     res = requests.post(url, headers=headers, json=body)
+
+    # 🔥 디버그용 (한번만 찍어봐)
+    if res.status_code != 200:
+        print("KIS ERROR STATUS:", res.status_code)
+        print("KIS ERROR BODY:", res.text)
+
     res.raise_for_status()
     return res.json()
