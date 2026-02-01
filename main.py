@@ -11,13 +11,7 @@ import json
 import os
 import yfinance as yf
 import pandas as pd
-from kis_api import order_stock
-from kis_api import get_overseas_avg_price
-from kis_api import (
-    get_avg_price,
-    preview_order,
-    confirm_order
-)
+from kis_api import order_overseas_stock, get_overseas_avg_price
 import json
 from uuid import uuid4
 app = FastAPI()
@@ -79,25 +73,25 @@ def execute_order(order_id: str):
 
 @app.post("/api/order/confirm/{order_id}")
 def order_confirm(order_id: str):
-    if order_id not in ORDER_CACHE:
-        raise HTTPException(status_code=404, detail="order not found")
+    order = ORDER_CACHE.pop(order_id, None)
+    if not order:
+        raise HTTPException(404, "order not found")
 
-    order = ORDER_CACHE.pop(order_id)
+    side = "buy" if order["side"].startswith("BUY") else "sell"
 
-    try:
-        result = order_stock(
-            ticker=order["ticker"],
-            price=order["price"],
-            qty=order["qty"],
-            side=order["side"].lower()  # BUY → buy
-        )
-        return {
-            "status": "ok",
-            "order": order,
-            "result": result
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    result = order_overseas_stock(
+        ticker=order["ticker"],
+        price=order["price"],
+        qty=order["qty"],
+        side=side
+    )
+
+    return {
+        "status": "ok",
+        "order": order,
+        "result": result
+    }
+
 
 @app.post("/trade")
 def trade(
