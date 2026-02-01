@@ -90,15 +90,19 @@ def get_overseas_avg_price(ticker: str):
         if item.get("ovrs_pdno") == ticker.upper():
           avg = item.get("pchs_avg_pric")
           qty = item.get("hldg_qty")
-          if not avg or not qty:
-            return None
-          return {
-            "avg_price": float(avg),
-            "qty": int(float(qty)),
-            "excg": item.get("ovrs_excg_cd")  # ⭐ 중요
-        }
-    return None
-    
+            
+          if avg and float(qty) > 0:
+              return {
+                  "found": True,
+                  "avg_price": float(avg),
+                  "qty": int(float(qty))
+                  "excg": item.get("ovrs_excg_cd")  # ⭐ 중요
+              }
+
+  return {
+      "found": False
+  }            
+
 # =====================
 # 해외주식 주문
 # =====================
