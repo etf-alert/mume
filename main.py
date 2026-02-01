@@ -16,6 +16,9 @@ import json
 from uuid import uuid4
 app = FastAPI()
 ORDER_CACHE = {}
+def normalize_side(side: str) -> str:
+    return "buy" if side.startswith("BUY") else "sell"
+    
 @app.post("/api/order/preview")
 def order_preview(data: dict):
     side = data["side"]
