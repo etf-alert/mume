@@ -95,7 +95,7 @@ def get_overseas_avg_price(ticker: str):
               return {
                   "found": True,
                   "avg_price": float(avg),
-                  "qty": int(float(qty))
+                  "qty": int(float(qty)),
                   "excg": item.get("ovrs_excg_cd")  # ⭐ 중요
               }
 
