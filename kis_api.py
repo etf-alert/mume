@@ -67,8 +67,8 @@ def get_access_token():
 # =====================
 def get_overseas_avg_price(ticker: str):
     token = get_access_token()
-
     url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/inquire-balance"
+
     headers = {
         "authorization": f"Bearer {token}",
         "appkey": APP_KEY,
@@ -76,6 +76,7 @@ def get_overseas_avg_price(ticker: str):
         "tr_id": "VTTS3012R",
         "custtype": "P"
     }
+
     params = {
         "CANO": CANO,
         "ACNT_PRDT_CD": ACNT,
@@ -88,21 +89,25 @@ def get_overseas_avg_price(ticker: str):
 
     for item in data.get("output1", []):
         if item.get("ovrs_pdno") == ticker.upper():
-          avg = item.get("pchs_avg_pric")
-          qty = item.get("hldg_qty")
-            
-          if avg and float(qty) > 0:
-              return {
-                  "found": True,
-                  "avg_price": float(avg),
-                  "qty": int(float(qty)),
-                  "excg": item.get("ovrs_excg_cd")  # ⭐ 중요
-              }
+            avg = item.get("pchs_avg_pric")
+            qty = item.get("hldg_qty")
 
-  return {
-      "found": False
-  }        
-  def get_overseas_position(ticker: str):
+            if avg and float(qty) > 0:
+                return {
+                    "found": True,
+                    "avg_price": float(avg),
+                    "qty": int(float(qty)),
+                    "excg": item.get("ovrs_excg_cd")
+                }
+
+    return {
+        "found": False
+    }
+
+# =====================
+# 해외주식 보유 수량 조회
+# =====================
+def get_overseas_position(ticker: str):
     token = get_access_token()
     url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/inquire-balance"
 
@@ -117,7 +122,6 @@ def get_overseas_avg_price(ticker: str):
     params = {
         "CANO": CANO,
         "ACNT_PRDT_CD": ACNT,
-        "OVRS_EXCG_CD": item.get("ovrs_excg_cd"),
         "TR_CRCY_CD": "USD"
     }
 
@@ -126,12 +130,10 @@ def get_overseas_avg_price(ticker: str):
     data = res.json()
 
     for item in data.get("output1", []):
-        if item["ovrs_pdno"] == ticker.upper():
-            return int(float(item["hldg_qty"]))
+        if item.get("ovrs_pdno") == ticker.upper():
+            return int(float(item.get("hldg_qty", 0)))
 
     return 0
-
-
 
 # =====================
 # 해외주식 주문
