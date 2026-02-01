@@ -49,7 +49,7 @@ def order_preview(data: dict):
         "price": price,
         "qty": qty
     }
-
+    
 @app.post("/api/order/execute/{order_id}")
 def execute_order(order_id: str):
     order = ORDER_CACHE.get(order_id)
@@ -58,18 +58,20 @@ def execute_order(order_id: str):
 
     side = "buy" if order["side"].startswith("BUY") else "sell"
 
-    result = order_stock(
-        ticker=order["ticker"],
-        price=order["price"],
-        qty=order["qty"],
-        side=side,
-        mock=True        # 🔥 모의투자
-    )
-
-    return {
-        "status": "ok",
-        "result": result
-    }
+    try:
+        result = order_overseas_stock(
+            ticker=order["ticker"],
+            price=order["price"],
+            qty=order["qty"],
+            side=side
+        )
+        return {
+            "status": "ok",
+            "order": order,
+            "result": result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/order/confirm/{order_id}")
 def order_confirm(order_id: str):
