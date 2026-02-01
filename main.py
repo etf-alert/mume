@@ -289,7 +289,7 @@ templates = Jinja2Templates(directory="templates")
 
 @app.get("/app", response_class=HTMLResponse)
 def app_page(request: Request):
-    return templates.TemplateResponse("app.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request})
 from fastapi.responses import JSONResponse
 
 @app.get("/chart/{ticker}")
