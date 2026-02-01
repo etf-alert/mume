@@ -102,8 +102,6 @@ def get_overseas_avg_price(ticker: str):
 # =====================
 # 해외주식 주문
 # =====================
-from .exchange import get_kis_exchange_code
-
 def order_overseas_stock(
     ticker: str,
     price: float,
