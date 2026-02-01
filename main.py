@@ -13,6 +13,11 @@ import yfinance as yf
 import pandas as pd
 from kis_api import order_stock
 from kis_api import get_overseas_avg_price
+from kis_api import (
+    get_avg_price,
+    preview_order,
+    confirm_order
+)
 import json
 from uuid import uuid4
 app = FastAPI()
