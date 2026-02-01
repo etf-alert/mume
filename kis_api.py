@@ -174,14 +174,14 @@ def order_overseas_stock(
     return res.json()
 
 def sell_all_overseas_stock(ticker: str, price: float):
-    qty = get_overseas_avg_price(ticker)
+    info = get_overseas_avg_price(ticker)
 
-    if qty <= 0:
+    if not info["found"] or info["qty"] <= 0:
         return {"error": "매도 가능 수량 없음"}
 
     return order_overseas_stock(
         ticker=ticker,
         price=price,
-        qty=qty,
+        qty=info["qty"],
         side="sell"
-)
+    )
