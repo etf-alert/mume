@@ -216,15 +216,15 @@ async function authFetch(url, options = {}) {
 async function loadData() {
   const res = await fetch("/watchlist");
   const data = await res.json();
-  const body = document.getElementById("tableBody");
-  body.innerHTML = "";
 
-  if (data.length === 0) {
+  const items = data.items;   // ✅ 핵심
+
+  if (!items || items.length === 0) {
     body.innerHTML = "<tr><td colspan='4' class='cell'>데이터 없음</td></tr>";
     return;
   }
 
-  data.forEach(item => {
+  item.forEach(item => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>
