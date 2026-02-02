@@ -213,8 +213,20 @@ async function authFetch(url, options = {}) {
       .catch(() => alert("추가 실패 (중복 또는 오류)"));
   }
 
+const body = document.getElementById("tableBody");
+
 async function loadData() {
-  const res = await fetch("/watchlist");
+  body.innerHTML = "<tr><td colspan='4' class='cell'>불러오는 중...</td></tr>";
+
+  let res;
+  try {
+    res = await fetch("/watchlist");
+  } catch (e) {
+    body.innerHTML =
+      "<tr><td colspan='4' class='cell'>네트워크 오류</td></tr>";
+    return;
+  }
+
   if (!res.ok) {
     body.innerHTML =
       "<tr><td colspan='4' class='cell'>서버 오류</td></tr>";
@@ -230,12 +242,9 @@ async function loadData() {
     return;
   }
 
-  items.forEach(item => {
-    // 기존 렌더링 코드
-  });
-}
+  body.innerHTML = ""; // ✅ 기존 행 제거
 
-  item.forEach(item => {
+  items.forEach(item => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>
@@ -244,7 +253,6 @@ async function loadData() {
           ${item.ticker}
         </button>
       </td>
-
       <td class="cell">
         ${item.price}
         <div class="change ${item.price_change < 0 ? 'down' : 'up'}">
@@ -252,7 +260,6 @@ async function loadData() {
           ${item.price_change_pct > 0 ? '+' : ''}${item.price_change_pct}%)
         </div>
       </td>
-
       <td class="cell">
         ${item.rsi}
         <div class="change ${item.rsi_change < 0 ? 'down' : 'up'}">
@@ -260,7 +267,6 @@ async function loadData() {
           ${item.rsi_change_pct > 0 ? '+' : ''}${item.rsi_change_pct}%)
         </div>
       </td>
-
       <td>
         <button class="delete-btn"
           onclick="deleteTicker('${item.ticker}')">✖</button>
@@ -269,6 +275,13 @@ async function loadData() {
     body.appendChild(tr);
   });
 }
+
+window.onload = () => {
+  if (localStorage.getItem("token")) {
+    document.getElementById("login-box").style.display = "none";
+    loadData();
+  }
+};
 
 function deleteTicker(ticker) {
   if (!confirm(`${ticker} 삭제할까?`)) return;
@@ -306,12 +319,6 @@ function deleteTicker(ticker) {
     }
   });
 
-window.onload = () => {
-  if (localStorage.getItem("token")) {
-    document.getElementById("login-box").style.display = "none";
-    loadData();
-  }
-};
 
 </script>
 
