@@ -193,7 +193,9 @@ def execute_order(
             raise HTTPException(400, "보유 수량 부족")
 
     # ✅ 장 상태 확인
-    is_open, next_open = market_status()
+    is_open = is_us_market_open()
+    next_open = next_market_open()
+
 
     # ==========================
     # 🌙 장전 → 주문 큐잉
