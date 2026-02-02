@@ -7,3 +7,4 @@ yfinance
 pandas
 python-jose[cryptography]
 python-dotenv
+pandas_market_calendars
