@@ -87,22 +87,17 @@ def get_overseas_avg_price(ticker: str):
 
     for item in data.get("output1", []):
         if item.get("ovrs_pdno") == ticker.upper():
-            avg = item.get("pchs_avg_pric")
-            qty = item.get("sell_psbl_qty")
+            qty = float(item.get("sell_psbl_qty", 0))
+            if qty <= 0:
+                break
 
-            avg = float(avg or 0)
-            qty = int(float(qty or 0))
-
-            if qty > 0 and avg > 0:
-                total_cost = round(avg * qty, 2)
-
-                return {
-                    "found": True,
-                    "avg_price": avg,
-                    "qty": qty,
-                    "total_cost": total_cost,   # ✅ 추가
-                    "excg": item.get("ovrs_excg_cd")
-                }
+            return {
+                "found": True,
+                "avg_price": float(item.get("pchs_avg_pric", 0)),
+                "qty": int(qty),
+                "total_cost": float(item.get("pchs_amt", 0)),  # ✅ KIS가 준 총 매수액
+                "excg": item.get("ovrs_excg_cd")
+            }
 
     # ❗ 구조 통일 (프론트 안전)
     return {
