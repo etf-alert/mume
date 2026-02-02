@@ -273,7 +273,16 @@ CREATE TABLE IF NOT EXISTS rsi_history (
 """)
 conn.commit()
 
-DROP TABLE IF EXISTS queued_orders;
+import sqlite3
+
+conn = sqlite3.connect("rsi_history.db")
+cur = conn.cursor()
+
+cur.execute("DROP TABLE IF EXISTS queued_orders")
+
+conn.commit()
+conn.close()
+
 
 CREATE TABLE queued_orders (
     id TEXT PRIMARY KEY,
