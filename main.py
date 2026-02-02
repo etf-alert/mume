@@ -457,6 +457,9 @@ def watchlist():
     for t in WATCHLIST:
         result.append(get_watchlist_item(t))
 
+    # ✅ RSI 오름차순 정렬 (낮은 RSI → 높은 RSI)
+    result.sort(key=lambda x: x["rsi"])
+
     return {
         "market_open": is_open,
         "next_open": next_open.isoformat() if next_open else None,
