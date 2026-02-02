@@ -15,6 +15,8 @@ import yfinance as yf
 import pandas as pd
 from kis_api import order_overseas_stock, get_overseas_avg_price
 from uuid import uuid4
+from market import market_status
+
 SECRET_KEY = os.getenv("JWT_SECRET", "change-this")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
@@ -258,6 +260,23 @@ CREATE TABLE IF NOT EXISTS rsi_history (
 )
 """)
 conn.commit()
+
+# =====================
+# 장전 주문 큐 테이블
+# =====================
+cur.execute("""
+CREATE TABLE IF NOT EXISTS queued_orders (
+    id TEXT PRIMARY KEY,
+    ticker TEXT NOT NULL,
+    side TEXT NOT NULL,           -- BUY / SELL
+    price REAL NOT NULL,
+    qty INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+)
+""")
+conn.commit()
+
+
 # =====================
 # FastAPI
 # =====================
