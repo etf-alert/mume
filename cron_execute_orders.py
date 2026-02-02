@@ -6,7 +6,7 @@ from kis_api import order_overseas_stock
 DB_FILE = "rsi_history.db"
 
 def run():
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE, timeout=30)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
@@ -23,14 +23,19 @@ def run():
     print(f"▶ queued orders: {len(rows)}")
 
     for o in rows:
-        try:
-            # 🔒 실행 잠금
-            cur.execute(
-                "UPDATE queued_orders SET status = 'RUNNING' WHERE id = ?",
-                (o["id"],)
-            )
-            conn.commit()
+        # 🔒 실행 락 시도
+        cur.execute("""
+            UPDATE queued_orders
+            SET status = 'RUNNING'
+            WHERE id = ? AND status = 'PENDING'
+        """, (o["id"],))
+        conn.commit()
 
+        # ❗ 이미 다른 프로세스가 가져감
+        if cur.rowcount == 0:
+            continue
+
+        try:
             print(
                 "▶ executing:",
                 o["ticker"],
@@ -55,11 +60,12 @@ def run():
             print("✅ done:", o["id"])
 
         except Exception as e:
-            # ❗ 실패 → 다시 대기 상태
-            cur.execute(
-                "UPDATE queued_orders SET status = 'PENDING' WHERE id = ?",
-                (o["id"],)
-            )
+            # ❗ 실패 → 다시 대기
+            cur.execute("""
+                UPDATE queued_orders
+                SET status = 'PENDING'
+                WHERE id = ?
+            """, (o["id"],))
             conn.commit()
             print("❌ order failed:", o["id"], str(e))
 
