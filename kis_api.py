@@ -19,25 +19,29 @@ _token_cache = {
     "access_token": None,
     "expire_at": 0
 }
+_exchange_cache = {}
+
 # =====================
 # 거래소 판별
 # =====================
 def get_kis_exchange_code(ticker: str) -> str:
-    """
-    티커 기준으로 KIS 해외거래소 코드 자동 판별
-    """
-    info = yf.Ticker(ticker).info
+    if ticker in _exchange_cache:
+        return _exchange_cache[ticker]
+
+    info = yf.Ticker(ticker).fast_info
     exchange = info.get("exchange", "")
 
     if exchange in ("NMS", "NASDAQ"):
-        return "NASD"
+        code = "NASD"
     elif exchange in ("NYQ", "NYSE"):
-        return "NYSE"
+        code = "NYSE"
     elif exchange in ("ASE", "AMEX"):
-        return "AMEX"
+        code = "AMEX"
     else:
-        # fallback (대부분 NASDAQ)
-        return "NASD"
+        code = "NASD"
+
+    _exchange_cache[ticker] = code
+    return code
         
 # =====================
 # Access Token
