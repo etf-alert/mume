@@ -101,13 +101,14 @@
   </div>
 
     <div class="row split">
-    <div class="field">
-      <div class="label">총 매수액</div>
-      <div id="avgPlus5" class="value">-</div>
-    </div>
-    <div class="field">
-      <div class="label">잔액</div>
-      <div id="pricePlus15" class="value">-</div>
+      <div class="field">
+        <div class="label">총 매수액</div>
+        <div id="totalCost" class="value">-</div>
+      </div>
+      <div class="field">
+        <div class="label">잔액</div>
+        <div id="balance" class="value">-</div>
+      </div>
     </div>
   </div>
 
@@ -179,8 +180,10 @@ const SHOW_DAYS = 252;
 
 const seedInput = document.getElementById("seedInput");
 const avgInput  = document.getElementById("avgInput");
-
+  
 const totalCostEl = document.getElementById("totalCost");
+const balanceEl   = document.getElementById("balance");
+
 const remainSeedEl = document.getElementById("remainSeed");  
 const priceChartEl = document.getElementById("priceChart");
 const rsiChartEl   = document.getElementById("rsiChart");
@@ -368,13 +371,17 @@ function updateLevels() {
   const avg = getAvg();
   if (!seed || !latestPrice) return;
 
-  /* ===== 잔액 계산 (핵심) ===== */
-  const balance = Math.max(seed - totalCost, 0);
+  /* ===== 총 매수액 안전 처리 ===== */
+  const safeTotalCost = holdQty > 0 ? totalCost : 0;
 
-  /* ===== 분할 계산은 잔액 기준 ===== */
+  /* ===== 잔액 ===== */
+  const balance = Math.max(seed - safeTotalCost, 0);
+
+  /* ===== 분할 계산 (잔액 기준) ===== */
   const split40 = balance / 40;
   const halfSplit = split40 / 2;
 
+  /* ===== 가격 계산 ===== */
   const sell = avg ? avg * 1.10 : 0;
   const avg5 = avg ? avg * 1.05 : 0;
   const price15 = latestPrice * 1.15;
@@ -384,17 +391,36 @@ function updateLevels() {
   const locQty = locBuy ? Math.floor(halfSplit / locBuy) : 0;
 
   /* ===== 화면 출력 ===== */
+
+  // 총 매수액
+  const totalCostEl = document.getElementById("totalCost");
+  if (totalCostEl) {
+    totalCostEl.innerText =
+      `$${safeTotalCost.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  }
+
+  // 잔액
+  const balanceEl = document.getElementById("balance");
+  if (balanceEl) {
+    balanceEl.innerText =
+      `$${balance.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  }
+
+  // 매도가
   sellPriceEl.innerText =
     avg
       ? `$${sell.toLocaleString(undefined, { maximumFractionDigits: 2 })} / ${holdQty} 주`
       : "-";
 
+  // 평단가 +5%
   avgPlus5El.innerText =
     avg ? `$${avg5.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-";
 
+  // 현재가 +15%
   pricePlus15El.innerText =
     `$${price15.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
+  // 매수 라인
   document.getElementById("avgBuyLine").innerText =
     avg
       ? `$${avg.toLocaleString(undefined, { maximumFractionDigits: 2 })} / ${avgQty} 주`
@@ -410,13 +436,6 @@ function updateLevels() {
 
   halfSplitEl.innerText =
     `$${halfSplit.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-
-  /* ===== (선택) 잔액 표시 ===== */
-  const balanceEl = document.getElementById("balance");
-  if (balanceEl) {
-    balanceEl.innerText =
-      `$${balance.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-  }
 }
 
 /* ===== 입력 ===== */
