@@ -192,7 +192,7 @@ def execute_order(
         if order["qty"] > pos["qty"]:
             raise HTTPException(400, "보유 수량 부족")
 
-    # ✅ 장 상태 확인 (서머타임 + 휴장일 자동 반영)
+    # ✅ 장 상태 확인
     is_open = is_us_market_open()
     next_open = next_market_open()
 
@@ -200,23 +200,27 @@ def execute_order(
     # 🌙 장전 / 시간외 → 주문 큐잉
     # ==========================
     if not is_open:
-        cur.execute("""
-        INSERT INTO queued_orders
-        (id, ticker, side, price, qty, created_at, execute_after)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
-            order_id,
-            order["ticker"],
-            order["side"],
-            order["price"],
-            order["qty"],
-            datetime.utcnow().isoformat(),
-            next_open.isoformat()
-        ))
-        conn.commit()
+        conn = sqlite3.connect(DB_FILE)
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                INSERT INTO queued_orders
+                (id, ticker, side, price, qty, created_at, execute_after, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING')
+            """, (
+                order_id,
+                order["ticker"],
+                order["side"],
+                order["price"],
+                order["qty"],
+                datetime.utcnow().isoformat(),
+                next_open.isoformat()
+            ))
+            conn.commit()
+        finally:
+            conn.close()
 
         ORDER_CACHE.pop(order_id, None)
-
         return {
             "status": "queued",
             "message": "장 시작 후 자동 실행",
@@ -227,7 +231,6 @@ def execute_order(
     # 📈 정규장 → 즉시 실행
     # ==========================
     side = "buy" if order["side"].startswith("BUY") else "sell"
-
     try:
         result = order_overseas_stock(
             ticker=order["ticker"],
@@ -241,20 +244,14 @@ def execute_order(
             "order": order,
             "result": result
         }
-
     except Exception as e:
-        msg = "KIS 주문 오류"
+        msg = str(e)
         if hasattr(e, "response") and e.response is not None:
             try:
                 msg = e.response.text
             except Exception:
-                msg = str(e)
-        else:
-            msg = str(e)
-
+                pass
         raise HTTPException(status_code=400, detail=msg)
-
-
 
 # =====================
 # DB 설정 (Cron용)
@@ -278,12 +275,11 @@ import sqlite3
 conn = sqlite3.connect("rsi_history.db")
 cur = conn.cursor()
 
-cur.execute("DROP TABLE IF EXISTS queued_orders")
-
 conn.commit()
 conn.close()
 
 
+cur.execute("""
 CREATE TABLE queued_orders (
     id TEXT PRIMARY KEY,
     ticker TEXT NOT NULL,
@@ -293,8 +289,9 @@ CREATE TABLE queued_orders (
     created_at TEXT NOT NULL,
     execute_after TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'PENDING'
-);
-
+)
+""")
+conn.commit()
 
 # =====================
 # 장전 주문 큐 테이블
@@ -303,14 +300,15 @@ cur.execute("""
 CREATE TABLE IF NOT EXISTS queued_orders (
     id TEXT PRIMARY KEY,
     ticker TEXT NOT NULL,
-    side TEXT NOT NULL,           -- BUY / SELL
+    side TEXT NOT NULL,
     price REAL NOT NULL,
     qty INTEGER NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    execute_after TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING'
 )
 """)
 conn.commit()
-
 
 # =====================
 # FastAPI
