@@ -290,7 +290,7 @@ def get_finviz_rsi(ticker: str):
 # =====================
 def get_watchlist_item(ticker: str):
     df = yf.download(ticker,
-                     period="2y",
+                     period="1y",
                      interval="1d",
                      progress=False,
                      threads=False)
@@ -424,7 +424,7 @@ from fastapi.responses import JSONResponse
 @app.get("/chart/{ticker}")
 def chart_data(ticker: str):
     df = yf.download(ticker,
-                     period="2y",
+                     period="1y",
                      interval="1d",
                      progress=False,
                      threads=False)
