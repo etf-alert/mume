@@ -253,21 +253,22 @@ def save_watchlist(data):
         json.dump(data, f)
 WATCHLIST = load_watchlist()
 # =====================
-# RSI (cutler)
+# RSI (wilder)
 # =====================
-def calculate_cutler_rsi_series(series: pd.Series, period: int = 14):
+def calculate_wilder_rsi_series(series: pd.Series, period: int = 14):
     delta = series.diff()
 
-    gain = delta.where(delta > 0, 0.0)
-    loss = -delta.where(delta < 0, 0.0)
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
 
-    avg_gain = gain.rolling(window=period, min_periods=period).mean()
-    avg_loss = loss.rolling(window=period, min_periods=period).mean()
+    # Wilder smoothing (EMA with alpha = 1/period)
+    avg_gain = gain.ewm(alpha=1/period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1/period, adjust=False).mean()
 
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
-
     return rsi
+
 
 # =====================
 # Finviz RSI (Cron용)
@@ -307,7 +308,7 @@ def get_watchlist_item(ticker: str):
     price_change = price - prev_price
     price_change_pct = (price_change / prev_price) * 100
     # RSI
-    rsi_series = calculate_cutler_rsi_series(close)
+    rsi_series = calculate_wilder_rsi_series(close)
     rsi_today = float(rsi_series.iloc[-1])
     rsi_prev = float(rsi_series.iloc[-2])
     rsi_change = rsi_today - rsi_prev
@@ -433,7 +434,7 @@ def chart_data(ticker: str):
     if isinstance(close, pd.DataFrame):
         close = close.iloc[:, 0]
     close = close.astype(float)
-    rsi_series = calculate_cutler_rsi_series(close)
+    rsi_series = calculate_wilder_rsi_series(close)
     close_6m = close.iloc[-126:]
     rsi_6m = rsi_series.iloc[-126:]
     data = []
