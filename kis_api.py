@@ -89,7 +89,7 @@ def get_overseas_avg_price(ticker: str):
         if item.get("ovrs_pdno") == ticker.upper():
             qty = float(item.get("sell_psbl_qty", 0))
             if qty <= 0:
-                break
+                continue
 
             return {
                 "found": True,
