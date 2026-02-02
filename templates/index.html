@@ -215,14 +215,25 @@ async function authFetch(url, options = {}) {
 
 async function loadData() {
   const res = await fetch("/watchlist");
-  const data = await res.json();
-
-  const items = data.items;   // ✅ 핵심
-
-  if (!items || items.length === 0) {
-    body.innerHTML = "<tr><td colspan='4' class='cell'>데이터 없음</td></tr>";
+  if (!res.ok) {
+    body.innerHTML =
+      "<tr><td colspan='4' class='cell'>서버 오류</td></tr>";
     return;
   }
+
+  const data = await res.json();
+  const items = data.items ?? [];
+
+  if (items.length === 0) {
+    body.innerHTML =
+      "<tr><td colspan='4' class='cell'>데이터 없음</td></tr>";
+    return;
+  }
+
+  items.forEach(item => {
+    // 기존 렌더링 코드
+  });
+}
 
   item.forEach(item => {
     const tr = document.createElement("tr");
