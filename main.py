@@ -438,21 +438,18 @@ def delete_ticker(ticker: str):
     
 @app.get("/watchlist")
 def watchlist():
-    is_open, next_open = market_status()
+    is_open = is_us_market_open()
+    next_open = next_market_open()
 
     result = []
     for t in WATCHLIST:
-        try:
-            item = get_watchlist_item(t)
-            item["market_open"] = is_open
-            item["next_open"] = next_open.strftime("%Y-%m-%d %H:%M")
-            result.append(item)
-        except Exception as e:
-            print(t, e)
+        result.append(get_watchlist_item(t))
 
-    result.sort(key=lambda x: x["rsi"])
-    return result
-
+    return {
+        "market_open": is_open,
+        "next_open": next_open.isoformat() if next_open else None,
+        "items": result
+    }
     
 @app.get("/api/avg-price/{ticker}")
 def avg_price(ticker: str):
