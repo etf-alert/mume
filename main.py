@@ -15,7 +15,7 @@ import yfinance as yf
 import pandas as pd
 from kis_api import order_overseas_stock, get_overseas_avg_price
 from uuid import uuid4
-from market import market_status
+from market_time import is_us_market_open, next_market_open
 
 SECRET_KEY = os.getenv("JWT_SECRET", "change-this")
 ALGORITHM = "HS256"
