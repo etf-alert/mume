@@ -181,8 +181,8 @@ def order_overseas_stock(
 
     # 상태 코드 체크
     res.raise_for_status()
-
-return resp_json
+    
+    return resp_json
 
 def sell_all_overseas_stock(ticker: str, price: float):
     info = get_overseas_avg_price(ticker)
