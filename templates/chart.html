@@ -366,33 +366,57 @@ function drawCharts() {
 function updateLevels() {
   const seed = getSeed();
   const avg = getAvg();
-  if (!seed || !avg || !latestPrice) return;
+  if (!seed || !latestPrice) return;
 
-  const remain = seed - totalCost; 
-  const split40 = seed / 40;
+  /* ===== 잔액 계산 (핵심) ===== */
+  const balance = Math.max(seed - totalCost, 0);
+
+  /* ===== 분할 계산은 잔액 기준 ===== */
+  const split40 = balance / 40;
   const halfSplit = split40 / 2;
 
-  const sell = avg * 1.10;
-  const avg5 = avg * 1.05;
+  const sell = avg ? avg * 1.10 : 0;
+  const avg5 = avg ? avg * 1.05 : 0;
   const price15 = latestPrice * 1.15;
-  const locBuy = Math.min(avg5, price15);
+  const locBuy = avg ? Math.min(avg5, price15) : 0;
 
-  const avgQty = Math.floor(halfSplit / avg);
-  const locQty = Math.floor(halfSplit / locBuy);
+  const avgQty = avg ? Math.floor(halfSplit / avg) : 0;
+  const locQty = locBuy ? Math.floor(halfSplit / locBuy) : 0;
 
-  sellPriceEl.innerText = "$" + sell.toLocaleString(undefined, { maximumFractionDigits: 2 }) + " / " + holdQty + " 주";
-  avgPlus5El.innerText = "$" + avg5.toLocaleString(undefined,{maximumFractionDigits:2});
-  pricePlus15El.innerText = "$" + price15.toLocaleString(undefined,{maximumFractionDigits:2});
+  /* ===== 화면 출력 ===== */
+  sellPriceEl.innerText =
+    avg
+      ? `$${sell.toLocaleString(undefined, { maximumFractionDigits: 2 })} / ${holdQty} 주`
+      : "-";
+
+  avgPlus5El.innerText =
+    avg ? `$${avg5.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : "-";
+
+  pricePlus15El.innerText =
+    `$${price15.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
   document.getElementById("avgBuyLine").innerText =
-    "$" + avg.toLocaleString(undefined,{maximumFractionDigits:2}) + " / " + avgQty + " 주";
+    avg
+      ? `$${avg.toLocaleString(undefined, { maximumFractionDigits: 2 })} / ${avgQty} 주`
+      : "-";
 
   locBuyEl.innerText =
-    "$" + locBuy.toLocaleString(undefined,{maximumFractionDigits:2}) + " / " + locQty + " 주";
+    avg
+      ? `$${locBuy.toLocaleString(undefined, { maximumFractionDigits: 2 })} / ${locQty} 주`
+      : "-";
 
-  split40El.innerText = "$" + split40.toLocaleString(undefined,{maximumFractionDigits:2});
-  halfSplitEl.innerText = "$" + halfSplit.toLocaleString(undefined,{maximumFractionDigits:2});
-  document.getElementById("remainCash").innerText = "$" + remain.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  split40El.innerText =
+    `$${split40.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+
+  halfSplitEl.innerText =
+    `$${halfSplit.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+
+  /* ===== (선택) 잔액 표시 ===== */
+  const balanceEl = document.getElementById("balance");
+  if (balanceEl) {
+    balanceEl.innerText =
+      `$${balance.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  }
 }
 
 /* ===== 입력 ===== */
