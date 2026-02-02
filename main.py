@@ -273,6 +273,20 @@ CREATE TABLE IF NOT EXISTS rsi_history (
 """)
 conn.commit()
 
+DROP TABLE IF EXISTS queued_orders;
+
+CREATE TABLE queued_orders (
+    id TEXT PRIMARY KEY,
+    ticker TEXT NOT NULL,
+    side TEXT NOT NULL,
+    price REAL NOT NULL,
+    qty INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    execute_after TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING'
+);
+
+
 # =====================
 # 장전 주문 큐 테이블
 # =====================
