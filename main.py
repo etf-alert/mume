@@ -76,6 +76,14 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         return payload["sub"]
     except JWTError:
         raise HTTPException(401, "invalid token")
+        
+def get_realtime_price(ticker: str):
+    fi = yf.Ticker(ticker).fast_info
+    return {
+        "regular": fi.get("last_price"),
+        "pre": fi.get("pre_market_price"),
+        "post": fi.get("post_market_price")
+    }
 
 @app.post("/api/order/preview")
 def order_preview(
@@ -162,7 +170,6 @@ def order_preview(
             detail=str(e)
         )
 
-
 @app.post("/api/order/execute/{order_id}")
 def execute_order(
     order_id: str,
@@ -183,6 +190,29 @@ def execute_order(
         if order["qty"] > pos["qty"]:
             raise HTTPException(400, "보유 수량 부족")
 
+    # ✅ 장 상태 확인
+    is_open, next_open = market_status()
+
+    # ==========================
+    # 🌙 장전 → 주문 큐잉
+    # ==========================
+    if not is_open:
+        order["status"] = "QUEUED"
+        order["execute_after"] = next_open.isoformat()
+
+        # 👉 여기서 DB에 저장해도 되고
+        # save_queued_order(order)
+
+        return {
+            "status": "queued",
+            "order": order,
+            "message": "장 시작 후 자동 실행",
+            "execute_after": next_open.strftime("%Y-%m-%d %H:%M")
+        }
+
+    # ==========================
+    # 📈 장중 → 즉시 실행
+    # ==========================
     side = "buy" if order["side"].startswith("BUY") else "sell"
 
     try:
@@ -192,9 +222,7 @@ def execute_order(
             qty=order["qty"],
             side=side
         )
-
         ORDER_CACHE.pop(order_id, None)
-
         return {
             "status": "ok",
             "order": order,
@@ -202,9 +230,7 @@ def execute_order(
         }
 
     except Exception as e:
-        # ✅ KIS 에러 메시지 최대한 그대로 전달
         msg = "KIS 주문 오류"
-
         if hasattr(e, "response") and e.response is not None:
             try:
                 msg = e.response.text
@@ -213,10 +239,7 @@ def execute_order(
         else:
             msg = str(e)
 
-        raise HTTPException(
-            status_code=400,
-            detail=msg
-        )
+        raise HTTPException(status_code=400, detail=msg)
 
 
 # =====================
@@ -290,7 +313,7 @@ def get_finviz_rsi(ticker: str):
 # =====================
 def get_watchlist_item(ticker: str):
     df = yf.download(ticker,
-                     period="1y",
+                     period="2y",
                      interval="1d",
                      progress=False,
                      threads=False)
@@ -303,7 +326,15 @@ def get_watchlist_item(ticker: str):
     if len(close) < 20:
         raise ValueError("Not enough data")
     # 가격
-    price = float(close.iloc[-1])
+    realtime = get_realtime_price(ticker)
+
+    price = (
+        realtime["pre"]
+        or realtime["post"]
+        or realtime["regular"]
+        or float(close.iloc[-1])
+    )
+
     prev_price = float(close.iloc[-2])
     price_change = price - prev_price
     price_change_pct = (price_change / prev_price) * 100
@@ -385,16 +416,24 @@ def delete_ticker(ticker: str):
     WATCHLIST.remove(t)
     save_watchlist(WATCHLIST)
     return {"removed": t}
+    
 @app.get("/watchlist")
 def watchlist():
+    is_open, next_open = market_status()
+
     result = []
     for t in WATCHLIST:
         try:
-            result.append(get_watchlist_item(t))
+            item = get_watchlist_item(t)
+            item["market_open"] = is_open
+            item["next_open"] = next_open.strftime("%Y-%m-%d %H:%M")
+            result.append(item)
         except Exception as e:
             print(t, e)
+
     result.sort(key=lambda x: x["rsi"])
     return result
+
     
 @app.get("/api/avg-price/{ticker}")
 def avg_price(ticker: str):
@@ -424,7 +463,7 @@ from fastapi.responses import JSONResponse
 @app.get("/chart/{ticker}")
 def chart_data(ticker: str):
     df = yf.download(ticker,
-                     period="1y",
+                     period="2y",
                      interval="1d",
                      progress=False,
                      threads=False)
