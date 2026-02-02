@@ -163,23 +163,26 @@ def order_overseas_stock(
 
     res = requests.post(url, headers=headers, json=body)
 
-
     print("===== KIS ORDER DEBUG =====")
     print("STATUS:", res.status_code)
     print("URL:", url)
     print("HEADERS:", headers)
     print("BODY:", body)
 
+    # ✅ response body는 딱 한 번만 읽는다
     try:
-        print("RESPONSE JSON:", res.json())
+        resp_json = res.json()
+        print("RESPONSE JSON:", resp_json)
     except Exception:
+        resp_json = None
         print("RESPONSE TEXT:", res.text)
 
     print("==========================")
 
-    # 여기서 다시 에러 발생시킴
+    # 상태 코드 체크
     res.raise_for_status()
-    return res.json()
+
+return resp_json
 
 def sell_all_overseas_stock(ticker: str, price: float):
     info = get_overseas_avg_price(ticker)
