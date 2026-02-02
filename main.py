@@ -192,30 +192,39 @@ def execute_order(
         if order["qty"] > pos["qty"]:
             raise HTTPException(400, "보유 수량 부족")
 
-    # ✅ 장 상태 확인
+    # ✅ 장 상태 확인 (서머타임 + 휴장일 자동 반영)
     is_open = is_us_market_open()
     next_open = next_market_open()
 
-
     # ==========================
-    # 🌙 장전 → 주문 큐잉
+    # 🌙 장전 / 시간외 → 주문 큐잉
     # ==========================
     if not is_open:
-        order["status"] = "QUEUED"
-        order["execute_after"] = next_open.isoformat()
+        cur.execute("""
+        INSERT INTO queued_orders
+        (id, ticker, side, price, qty, created_at, execute_after)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            order_id,
+            order["ticker"],
+            order["side"],
+            order["price"],
+            order["qty"],
+            datetime.utcnow().isoformat(),
+            next_open.isoformat()
+        ))
+        conn.commit()
 
-        # 👉 여기서 DB에 저장해도 되고
-        # save_queued_order(order)
+        ORDER_CACHE.pop(order_id, None)
 
         return {
             "status": "queued",
-            "order": order,
             "message": "장 시작 후 자동 실행",
-            "execute_after": next_open.strftime("%Y-%m-%d %H:%M")
+            "execute_after": next_open.strftime("%Y-%m-%d %H:%M (ET)")
         }
 
     # ==========================
-    # 📈 장중 → 즉시 실행
+    # 📈 정규장 → 즉시 실행
     # ==========================
     side = "buy" if order["side"].startswith("BUY") else "sell"
 
@@ -244,6 +253,7 @@ def execute_order(
             msg = str(e)
 
         raise HTTPException(status_code=400, detail=msg)
+
 
 
 # =====================
