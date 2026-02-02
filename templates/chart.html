@@ -100,6 +100,17 @@
     </div>
   </div>
 
+    <div class="row split">
+    <div class="field">
+      <div class="label">총 매수액</div>
+      <div id="avgPlus5" class="value">-</div>
+    </div>
+    <div class="field">
+      <div class="label">잔액</div>
+      <div id="pricePlus15" class="value">-</div>
+    </div>
+  </div>
+
   <div class="row">
     <div class="label">매도가 (평단가 +10%) / 보유 수량</div>
     <div id="sellPrice" class="value sell">-</div>
@@ -169,6 +180,8 @@ const SHOW_DAYS = 252;
 const seedInput = document.getElementById("seedInput");
 const avgInput  = document.getElementById("avgInput");
 
+const totalCostEl = document.getElementById("totalCost");
+const remainSeedEl = document.getElementById("remainSeed");  
 const priceChartEl = document.getElementById("priceChart");
 const rsiChartEl   = document.getElementById("rsiChart");
 
@@ -192,6 +205,7 @@ document.getElementById("title").innerText = `📈 ${ticker}`;
 
 let prices = [], rsis = [], labels = [], latestPrice = null;
 let holdQty = 0;
+let totalCost = 0;
   
 /* ===== 유틸 ===== */
 function authFetch(url, options = {}) {
@@ -246,22 +260,29 @@ fetch(`/api/avg-price/${ticker}`)
     if (d.found) {
       avgInput.value = "$" + d.avg_price.toFixed(2);
       holdQty = d.qty;
-      localStorage.setItem(`avg_${ticker}`, avgInput.value);
 
+      totalCost = d.total_cost || 0;   // ✅ 추가
+
+      localStorage.setItem(`avg_${ticker}`, avgInput.value);
       avgStatusEl.innerText = "✅ 한국투자증권 계좌에서 가져옴";
-      avgStatusEl.style.color = "#22c55e"; // green
+      avgStatusEl.style.color = "#22c55e";
     } else {
+      holdQty = 0;
+      totalCost = 0;                   // ✅ 추가
+
       avgStatusEl.innerText =
         "⚠️ 보유 종목이 아니거나 평단가를 가져올 수 없음";
-      avgStatusEl.style.color = "#94a3b8"; // gray
+      avgStatusEl.style.color = "#94a3b8";
     }
     updateLevels();
   })
   .catch(() => {
     holdQty = 0;
+    totalCost = 0;                     // ✅ 추가
+
     avgStatusEl.innerText =
       "❌ 평단가 조회 실패 (API 오류)";
-    avgStatusEl.style.color = "#f87171"; // red
+    avgStatusEl.style.color = "#f87171";
   });
 
 
@@ -347,6 +368,7 @@ function updateLevels() {
   const avg = getAvg();
   if (!seed || !avg || !latestPrice) return;
 
+  const remain = seed - totalCost; 
   const split40 = seed / 40;
   const halfSplit = split40 / 2;
 
@@ -370,6 +392,9 @@ function updateLevels() {
 
   split40El.innerText = "$" + split40.toLocaleString(undefined,{maximumFractionDigits:2});
   halfSplitEl.innerText = "$" + halfSplit.toLocaleString(undefined,{maximumFractionDigits:2});
+  document.getElementById("remainCash").innerText =
+  "$" + remain.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
 }
 
 /* ===== 입력 ===== */
