@@ -1,33 +1,36 @@
 # cron_execute_orders.py
 import sqlite3
 from datetime import datetime
-from market_time import is_us_market_open
 from kis_api import order_overseas_stock
 
 DB_FILE = "rsi_history.db"
 
 def run():
-    # ❌ 장 안 열렸으면 스킵
-    if not is_us_market_open():
-        print("❌ Market closed")
-        return
-
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    # ✅ execute_after 지난 주문만 실행
+    now = datetime.utcnow().isoformat()
+
     rows = cur.execute("""
         SELECT *
         FROM queued_orders
         WHERE execute_after <= ?
+          AND status = 'PENDING'
         ORDER BY created_at ASC
-    """, (datetime.utcnow().isoformat(),)).fetchall()
+    """, (now,)).fetchall()
 
     print(f"▶ queued orders: {len(rows)}")
 
     for o in rows:
         try:
+            # 🔒 실행 잠금
+            cur.execute(
+                "UPDATE queued_orders SET status = 'RUNNING' WHERE id = ?",
+                (o["id"],)
+            )
+            conn.commit()
+
             print(
                 "▶ executing:",
                 o["ticker"],
@@ -49,11 +52,15 @@ def run():
                 (o["id"],)
             )
             conn.commit()
-
             print("✅ done:", o["id"])
 
         except Exception as e:
-            # ❗ 실패 → 유지 (다음 cron 재시도)
+            # ❗ 실패 → 다시 대기 상태
+            cur.execute(
+                "UPDATE queued_orders SET status = 'PENDING' WHERE id = ?",
+                (o["id"],)
+            )
+            conn.commit()
             print("❌ order failed:", o["id"], str(e))
 
     conn.close()
