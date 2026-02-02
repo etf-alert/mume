@@ -68,7 +68,6 @@ def get_access_token():
 def get_overseas_avg_price(ticker: str):
     token = get_access_token()
     url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/inquire-balance"
-
     headers = {
         "authorization": f"Bearer {token}",
         "appkey": APP_KEY,
@@ -76,7 +75,6 @@ def get_overseas_avg_price(ticker: str):
         "tr_id": "VTTS3012R",
         "custtype": "P"
     }
-
     params = {
         "CANO": CANO,
         "ACNT_PRDT_CD": ACNT,
@@ -92,18 +90,29 @@ def get_overseas_avg_price(ticker: str):
             avg = item.get("pchs_avg_pric")
             qty = item.get("sell_psbl_qty")
 
-            if avg and float(qty) > 0:
+            avg = float(avg or 0)
+            qty = int(float(qty or 0))
+
+            if qty > 0 and avg > 0:
+                total_cost = round(avg * qty, 2)
+
                 return {
                     "found": True,
-                    "avg_price": float(avg),
-                    "qty": int(float(qty)),
+                    "avg_price": avg,
+                    "qty": qty,
+                    "total_cost": total_cost,   # ✅ 추가
                     "excg": item.get("ovrs_excg_cd")
                 }
 
+    # ❗ 구조 통일 (프론트 안전)
     return {
         "found": False,
-        "qty" : 0
+        "avg_price": 0,
+        "qty": 0,
+        "total_cost": 0,
+        "excg": None
     }
+
 
 # =====================
 # 해외주식 주문
