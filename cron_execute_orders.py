@@ -1,14 +1,12 @@
 import sqlite3
-from datetime import datetime
+from market_time import is_us_market_open
 from kis_api import order_overseas_stock
-from market import market_status
 
 DB_FILE = "rsi_history.db"
 
 def run():
-    is_open, _ = market_status()
-    if not is_open:
-        print("❌ Market not open")
+    if not is_us_market_open():
+        print("❌ Market closed")
         return
 
     conn = sqlite3.connect(DB_FILE)
