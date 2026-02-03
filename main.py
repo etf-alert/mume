@@ -17,16 +17,22 @@ from kis_api import order_overseas_stock, get_overseas_avg_price
 from uuid import uuid4
 from market_time import is_us_market_open, next_market_open
 from alpaca_trade_api.rest import REST
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.live import StockDataStream
+from alpaca.data.requests import StockLatestTradeRequest, StockSnapshotRequest
+
 
 
 SECRET_KEY = os.getenv("JWT_SECRET", "change-this")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-alpaca = REST(
-    key_id=os.getenv("ALPACA_API_KEY"),
-    secret_key=os.getenv("ALPACA_SECRET_KEY"),
-    base_url="https://paper-api.alpaca.markets"  # paper trading
+ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
+ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
+
+alpaca_data = StockHistoricalDataClient(
+    api_key=ALPACA_API_KEY,
+    secret_key=ALPACA_SECRET_KEY
 )
 
 if SECRET_KEY == "change-this":
@@ -88,39 +94,27 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         raise HTTPException(401, "invalid token")
 
 def get_realtime_price(ticker: str):
-    regular = None
-    pre = None
-    post = None
-
     try:
-        # 🔥 최신 bar (1분봉)
-        barset = alpaca.get_bars(
-            ticker,
-            timeframe="1Min",
-            limit=1
-        )
-        if barset:
-            regular = float(barset[-1].c)
+        # 최신 체결가 (정규장)
+        trade_req = StockLatestTradeRequest(symbol_or_symbols=ticker)
+        trade = alpaca_data.get_stock_latest_trade(trade_req)
+        regular = float(trade[ticker].price)
     except Exception as e:
         print("Alpaca regular price error:", e)
+        regular = None
 
     try:
-        # 🔥 Snapshot (pre / post 포함)
-        snap = alpaca.get_snapshot(ticker)
+        # 스냅샷 (pre / post 포함)
+        snap_req = StockSnapshotRequest(symbol_or_symbols=ticker)
+        snap = alpaca_data.get_stock_snapshot(snap_req)
+        s = snap[ticker]
 
-        if snap and snap.latest_trade:
-            regular = float(snap.latest_trade.p)
-
-        if snap and snap.daily_bar and snap.prev_daily_bar:
-            # 장외 변동은 비교용으로만 사용
-            pass
-
-        if snap and snap.latest_quote:
-            # 참고용 (필요 시)
-            pass
-
+        pre = float(s.daily_bar.close) if s.daily_bar else None
+        post = float(s.latest_trade.price) if s.latest_trade else None
     except Exception as e:
         print("Alpaca snapshot error:", e)
+        pre = None
+        post = None
 
     return {
         "regular": regular,
