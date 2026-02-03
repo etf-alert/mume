@@ -659,7 +659,6 @@ def chart_data(ticker: str, user=Depends(get_current_user)):
     close = df["Close"]
     if isinstance(close, pd.DataFrame):
         close = close.iloc[:, 0]
-
     close = close.astype(float)
 
     # ===== 히스토리 =====
@@ -672,31 +671,33 @@ def chart_data(ticker: str, user=Depends(get_current_user)):
             "rsi": round(float(rsi_series.iloc[i]), 2)
             if not pd.isna(rsi_series.iloc[i]) else None
         })
-        
+
     # ===== 기준 가격 =====
     close_price = float(close.iloc[-1])
     prev_close = float(close.iloc[-2])
 
-    # ===== 현재가 결정 =====
     realtime = get_realtime_price(ticker)
     market_open = is_us_market_open()
 
-    if market_open and realtime["regular"] is not None:
-        current_price = realtime["regular"]
-        price_source = "REGULAR"
+    # ===== 기준 현재가 (전일 종가 대비 계산용) =====
+    if realtime.get("regular") is not None:
+        current_price = float(realtime["regular"])
     else:
         current_price = close_price
-        price_source = "CLOSE"
 
     # ===== 표시 가격 (시간외 우선) =====
-    price = current_price
-    if not market_open:
-        if realtime["pre"] is not None:
-            price = realtime["pre"]
-            price_source = "PRE"
-        elif realtime["post"] is not None:
-            price = realtime["post"]
-            price_source = "POST"
+    if realtime.get("pre") is not None:
+        display_price = float(realtime["pre"])
+        price_source = "PRE"
+    elif realtime.get("post") is not None:
+        display_price = float(realtime["post"])
+        price_source = "POST"
+    elif market_open and realtime.get("regular") is not None:
+        display_price = float(realtime["regular"])
+        price_source = "REGULAR"
+    else:
+        display_price = close_price
+        price_source = "CLOSE"
 
     # ===== 전일 종가 대비 (현재가 기준) =====
     current_change = current_price - prev_close
@@ -704,27 +705,28 @@ def chart_data(ticker: str, user=Depends(get_current_user)):
 
     # ===== 시간외 증감 (현재가 대비) =====
     if price_source in ("PRE", "POST"):
-        after_change = price - current_price
+        after_change = display_price - current_price
         after_change_pct = (after_change / current_price) * 100
     else:
-        after_change = 0.0
-        after_change_pct = 0.0
+        after_change = None
+        after_change_pct = None
 
     return {
         "ticker": ticker,
         "history": history,
 
-        # 🔥 현재가
+        # 현재가 (전일 종가 대비)
         "current_price": round(current_price, 2),
         "current_change": round(current_change, 2),
         "current_change_pct": round(current_change_pct, 2),
 
-        # 🔥 시간외
-        "after_change": round(after_change, 2),
-        "after_change_pct": round(after_change_pct, 2),
+        # 시간외 (현재가 대비)
+        "after_change": round(after_change, 2) if after_change is not None else None,
+        "after_change_pct": round(after_change_pct, 2) if after_change_pct is not None else None,
 
+        # 표시용
         "price_source": price_source,
-        "display_price": round(price, 2),
+        "display_price": round(display_price, 2),
     }
 
 @app.get("/chart-page", response_class=HTMLResponse)
