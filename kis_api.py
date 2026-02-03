@@ -32,6 +32,12 @@ def get_kis_exchange_code(ticker: str) -> str:
         code = "NYSE"
     elif exchange in ("ASE", "AMEX"):
         code = "AMEX"
+
+    else:
+        code = "NASD"  # 안전 fallback
+
+    _exchange_cache[ticker] = code
+    return code
      
 # =====================
 # Access Token
@@ -140,7 +146,7 @@ def order_overseas_stock(
 
         # 🔥 주문 방식
         # 매수: LOC / 매도: 지정가
-        "ORD_DVSN_CD": "34" if is_buy else "00",
+        "ORD_DVSN": "34" if is_buy else "00",
 
         # 🔥 해외주식 주문 가격 필드
         "OVRS_ORD_UNPR": f"{price:.2f}",
