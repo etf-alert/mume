@@ -414,7 +414,7 @@ def get_watchlist_item(ticker: str):
     # 2️⃣ 표시 가격 (시간외 무조건 우선)
     # ==================================================
     display_price = base_price
-    price_source = "REGULAR" if realtime["regular"] is not None else "CLOSE"
+    price_source = "REGULAR" if market_open and realtime["regular"] is not None else "CLOSE"
 
     if not market_open:
         if realtime["pre"] is not None:
