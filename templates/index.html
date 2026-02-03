@@ -256,6 +256,7 @@ async function login() {
   });
 
   const data = await res.json();
+  console.log("WATCHLIST RESPONSE:", data);
 
   if (!res.ok) {
     document.getElementById("login-status").innerText = "로그인 실패";
