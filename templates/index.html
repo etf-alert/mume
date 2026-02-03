@@ -417,7 +417,7 @@ async function loadData() {
   </div>
 
   ${
-    item.display_price !== null
+    item.price_source !== "REGULAR" && item.display_price !== null
       ? `
         <div class="price-after">
           <span class="badge ${item.price_source.toLowerCase()}">
@@ -432,6 +432,7 @@ async function loadData() {
       `
       : ``
   }
+
 </td>
 
       <!-- ✅ RSI 컬럼 -->
