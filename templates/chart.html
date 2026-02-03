@@ -271,7 +271,7 @@ const getSeed = () => parseFloat(onlyNumber(seedInput.value) || "0");
 const getAvg  = () => parseFloat(onlyNumber(avgInput.value) || "0");
 
 /* ===== 데이터 로드 ===== */
-fetch(`/chart/${ticker}`)
+authFetch(`/chart/${ticker}`)
   .then(r => r.json())
   .then(res => {
     const data = res.history;
