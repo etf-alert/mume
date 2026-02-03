@@ -139,6 +139,14 @@ def resolve_prices(ticker: str):
         "after_change_pct": round(after_change_pct, 2) if after_change_pct is not None else None,
     }
 
+def get_kis_daily_closes(ticker: str) -> list[float]:
+    """
+    KIS 해외주식 일봉 종가 리스트 반환
+    최신 → 과거 순서면 안 되고, 과거 → 최신 순서여야 함
+    """
+    data = get_kis_overseas_daily(ticker)  # 네가 이미 쓰는 함수로 교체
+    closes = [float(d["close"]) for d in data]
+    return closes
 
 @app.post("/api/order/preview")
 def order_preview(
