@@ -411,7 +411,7 @@ async function loadData() {
     item.price_source === "REGULAR"
       ? `
         <div class="price-close">
-          ${item.price}
+          ${item.display_price}
         </div>
         <div class="change ${item.close_change < 0 ? 'down' : 'up'}">
           (${item.close_change > 0 ? '+' : ''}${item.close_change},
@@ -433,7 +433,7 @@ async function loadData() {
           <span class="badge ${item.price_source.toLowerCase()}">
             ${item.price_source}
           </span>
-          ${item.price}
+          ${item.display_price}
         </div>
         <div class="change ${item.after_change < 0 ? 'down' : 'up'}">
           (${item.after_change > 0 ? '+' : ''}${item.after_change},
