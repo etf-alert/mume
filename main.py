@@ -101,18 +101,21 @@ def resolve_prices(ticker: str):
     realtime = get_realtime_price(ticker)
     market_open = is_us_market_open()
 
-    # 1️⃣ 기준 현재가 (전일 종가 대비용)
-    base_price = (
-        float(realtime["regular"])
-        if realtime["regular"] is not None
-        else close_price
-    )
-
-    # 2️⃣ 표시 가격 (정규장 아니면 무조건 시간외 우선)
-    if market_open:
-        display_price = base_price
-        price_source = "REGULAR"
+    # =========================
+    # 1️⃣ 기준 현재가 (항상 존재)
+    # =========================
+    if realtime["regular"] is not None:
+        base_price = float(realtime["regular"])
     else:
+        base_price = close_price
+
+    # =========================
+    # 2️⃣ 시간외 가격 판단
+    # =========================
+    display_price = None
+    price_source = "REGULAR"
+
+    if not market_open:
         if realtime["pre"] is not None:
             display_price = float(realtime["pre"])
             price_source = "PRE"
@@ -120,29 +123,43 @@ def resolve_prices(ticker: str):
             display_price = float(realtime["post"])
             price_source = "POST"
         else:
-            # ✅ fallback 필수
-            display_price = base_price
+            # ❗ 시간외 가격 자체가 없음
+            display_price = None
             price_source = "CLOSE"
 
+    # =========================
     # 3️⃣ 현재가 증감 (전일 종가 대비)
+    # =========================
     current_change = base_price - prev_close
     current_change_pct = (current_change / prev_close) * 100
 
+    # =========================
     # 4️⃣ 시간외 증감 (기준 현재가 대비)
+    # =========================
     after_change = None
     after_change_pct = None
-    if not market_open and price_source in ("PRE", "POST"):
+
+    if display_price is not None and price_source in ("PRE", "POST"):
         after_change = display_price - base_price
         after_change_pct = (after_change / base_price) * 100
 
     return {
+        # 🔥 기준 현재가
         "base_price": round(base_price, 2),
-        "display_price": round(display_price, 2),
+
+        # 🔥 시간외 (있을 때만 값 존재)
+        "display_price": round(display_price, 2) if display_price is not None else None,
         "price_source": price_source,
+
+        # 🔥 현재가 증감
         "current_change": round(current_change, 2),
         "current_change_pct": round(current_change_pct, 2),
+
+        # 🔥 시간외 증감
         "after_change": round(after_change, 2) if after_change is not None else None,
         "after_change_pct": round(after_change_pct, 2) if after_change_pct is not None else None,
+
+        # 참고용
         "close_price": round(close_price, 2),
         "prev_close": round(prev_close, 2),
     }
