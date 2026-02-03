@@ -450,10 +450,10 @@ def get_finviz_rsi(ticker: str):
 # Watchlist 화면용
 # =====================
 def get_watchlist_item(ticker: str):
-    # 가격 계산 (공통 로직)
+    # ✅ 공통 가격 로직
     p = resolve_prices(ticker)
 
-    # RSI 계산만 여기서 유지
+    # ✅ RSI 계산
     df = yf.download(
         ticker,
         period="2y",
@@ -461,6 +461,9 @@ def get_watchlist_item(ticker: str):
         progress=False,
         threads=False
     )
+    if df is None or df.empty:
+        raise ValueError("Empty DataFrame")
+
     close = df["Close"]
     if isinstance(close, pd.DataFrame):
         close = close.iloc[:, 0]
