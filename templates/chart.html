@@ -71,6 +71,29 @@
       z-index: 9999;
       transition: top 0.2s;
     }
+    .badge {
+      margin-left: 6px;
+      padding: 2px 6px;
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 4px;
+      vertical-align: middle;
+    }
+
+    .badge.pre {
+      background: #facc15;
+      color: #000;
+    }
+
+    .badge.post {
+      background: #38bdf8;
+      color: #020617;
+    }
+
+    .badge.close {
+      background: #64748b;
+      color: white;
+    }
 
   </style>
 </head>
@@ -85,7 +108,12 @@
 <div class="box">
   <div class="row">
     <div class="label">현재가</div>
-    <div id="currentPrice" class="value">-</div>
+    
+    <div id="currentPrice" class="value">
+      -
+      <span id="priceBadge" class="badge" style="display:none"></span>
+    </div>
+
   </div>
 
   <div class="row split">
@@ -245,17 +273,32 @@ const getAvg  = () => parseFloat(onlyNumber(avgInput.value) || "0");
 /* ===== 데이터 로드 ===== */
 fetch(`/chart/${ticker}`)
   .then(r => r.json())
-  .then(data => {
+  .then(res => {
+    const data = res.history;
+
     data.slice(-SHOW_DAYS).forEach(d => {
       labels.push(d.date);
       prices.push(d.price);
       rsis.push(d.rsi);
     });
-    latestPrice = prices.at(-1);
+
+    latestPrice = res.current_price ?? prices.at(-1);
     currentPriceEl.innerText = "$" + latestPrice.toFixed(2);
+
+    // 🏷 장전 / 장후 뱃지
+    const badge = document.getElementById("priceBadge");
+    if (res.price_source && res.price_source !== "REGULAR") {
+      badge.innerText = res.price_source;
+      badge.className = "badge " + res.price_source.toLowerCase();
+      badge.style.display = "inline-block";
+    } else {
+      badge.style.display = "none";
+    }
+
     drawCharts();
     updateLevels();
   });
+
   
 fetch(`/api/avg-price/${ticker}`)
   .then(r => r.json())
