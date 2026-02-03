@@ -80,88 +80,79 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         raise HTTPException(401, "invalid token")
 
 def resolve_prices(ticker: str):
-    df = yf.download(
-        ticker,
-        period="2y",
-        interval="1d",
-        progress=False,
-        threads=False
-    )
-    if df is None or df.empty:
-        raise ValueError("Empty DataFrame")
+    # =========================
+    # 1️⃣ 기준 종가 (KIS)
+    # =========================
+    close_price = float(get_kis_close(ticker))
+    prev_close = close_price  # RSI / 증감 기준
 
-    close = df["Close"]
-    if isinstance(close, pd.DataFrame):
-        close = close.iloc[:, 0]
-    close = close.astype(float)
-
-    close_price = float(close.iloc[-1])
-    prev_close = float(close.iloc[-2])
-
-    realtime = get_realtime_price(ticker)
+    # =========================
+    # 2️⃣ Alpaca 실시간 가격
+    # =========================
+    alpaca = get_alpaca_prices(ticker)
     market_open = is_us_market_open()
 
+    regular = alpaca.get("regular")
+    pre = alpaca.get("pre")
+    post = alpaca.get("post")
+
     # =========================
-    # 1️⃣ 기준 현재가 (항상 존재)
+    # 3️⃣ 기준 현재가 (정규장 우선)
     # =========================
-    if realtime["regular"] is not None:
-        base_price = float(realtime["regular"])
+    if market_open and regular is not None:
+        base_price = float(regular)
     else:
         base_price = close_price
 
     # =========================
-    # 2️⃣ 시간외 가격 판단
+    # 4️⃣ 표시 가격 (정규장 아니면 무조건 시간외)
     # =========================
-    display_price = None
-    price_source = "REGULAR"
-
-    if not market_open:
-        if realtime["pre"] is not None:
-            display_price = float(realtime["pre"])
+    if market_open:
+        display_price = base_price
+        price_source = "REGULAR"
+    else:
+        if pre is not None:
+            display_price = float(pre)
             price_source = "PRE"
-        elif realtime["post"] is not None:
-            display_price = float(realtime["post"])
+        elif post is not None:
+            display_price = float(post)
             price_source = "POST"
         else:
-            # ❗ 시간외 가격 자체가 없음
-            display_price = None
+            display_price = close_price
             price_source = "CLOSE"
 
     # =========================
-    # 3️⃣ 현재가 증감 (전일 종가 대비)
+    # 5️⃣ 현재가 증감 (전일 종가 대비)
     # =========================
     current_change = base_price - prev_close
     current_change_pct = (current_change / prev_close) * 100
 
     # =========================
-    # 4️⃣ 시간외 증감 (기준 현재가 대비)
+    # 6️⃣ 시간외 증감 (현재가 대비)
     # =========================
     after_change = None
     after_change_pct = None
 
-    if display_price is not None and price_source in ("PRE", "POST"):
+    if not market_open and price_source in ("PRE", "POST"):
         after_change = display_price - base_price
         after_change_pct = (after_change / base_price) * 100
 
     return {
-        # 🔥 기준 현재가
+        # 기준 가격
         "base_price": round(base_price, 2),
+        "close_price": round(close_price, 2),
 
-        # 🔥 시간외 (있을 때만 값 존재)
-        "display_price": round(display_price, 2) if display_price is not None else None,
+        # 표시 가격
+        "display_price": round(display_price, 2),
         "price_source": price_source,
 
-        # 🔥 현재가 증감
+        # 현재가 증감
         "current_change": round(current_change, 2),
         "current_change_pct": round(current_change_pct, 2),
 
-        # 🔥 시간외 증감
+        # 시간외 증감
         "after_change": round(after_change, 2) if after_change is not None else None,
         "after_change_pct": round(after_change_pct, 2) if after_change_pct is not None else None,
-
-        # 참고용
-        "close_price": round(close_price, 2),
-        "prev_close": round(prev_close, 2),
     }
 
      
@@ -467,48 +458,41 @@ def get_finviz_rsi(ticker: str):
 # Watchlist 화면용
 # =====================
 def get_watchlist_item(ticker: str):
+    # 가격
     p = resolve_prices(ticker)
 
-    df = yf.download(
-        ticker,
-        period="2y",
-        interval="1d",
-        progress=False,
-        threads=False
-    )
+    # =========================
+    # RSI (KIS 종가 기반)
+    # =========================
+    closes = get_kis_daily_closes(ticker)  # list[float]
+    rsi_series = calculate_wilder_rsi_series(pd.Series(closes))
 
-    if df is None or df.empty:
-        raise ValueError("Empty DataFrame")
-
-    close = df["Close"]
-    if isinstance(close, pd.DataFrame):
-        close = close.iloc[:, 0]
-
-    close = close.astype(float)
-
-    rsi_series = calculate_wilder_rsi_series(close)
     rsi_today = float(rsi_series.iloc[-1])
     rsi_prev = float(rsi_series.iloc[-2])
     rsi_change = rsi_today - rsi_prev
     rsi_change_pct = (rsi_change / rsi_prev * 100) if rsi_prev != 0 else 0.0
 
-    item = {
+    return {
         "ticker": ticker,
+
+        # 현재가
         "current_price": p["base_price"],
         "current_change": p["current_change"],
         "current_change_pct": p["current_change_pct"],
+
+        # 시간외
         "display_price": p["display_price"],
         "after_change": p["after_change"],
         "after_change_pct": p["after_change_pct"],
+
+        # 뱃지
         "price_source": p["price_source"],
+
+        # RSI
         "rsi": round(rsi_today, 2),
         "rsi_change": round(rsi_change, 2),
         "rsi_change_pct": round(rsi_change_pct, 2),
     }
-
-    print("WATCHLIST ITEM DEBUG:", item)  # ✅ 여기
-    return item
-
 
 # =====================
 # Cron 저장 (선택)
