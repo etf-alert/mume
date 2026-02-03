@@ -81,48 +81,44 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 
 def resolve_prices(ticker: str):
     # =========================
-    # 기준 종가 (RSI와 동일 소스)
+    # 기준 종가 (yfinance)
     # =========================
-    closes = get_kis_daily_closes(ticker)
-    if not closes or len(closes) < 2:
-        raise ValueError("Not enough KIS close data")
+    closes = get_yf_daily_closes(ticker, period="5d")
+    if len(closes) < 2:
+        raise ValueError("Not enough yfinance close data")
 
-    close_price = float(closes[-1])
-    prev_close = float(closes[-2])
+    close_price = closes[-1]
+    prev_close = closes[-2]
 
     # =========================
-    # 실시간 / 시간외
+    # 실시간 / 시간외 (Alpaca)
     # =========================
-    realtime = get_realtime_price(ticker)
+    realtime = get_realtime_price(ticker)  # 🔥 Alpaca
     market_open = is_us_market_open()
 
-    # 1️⃣ 기준 현재가 (전일 종가 대비용)
     base_price = (
         float(realtime["regular"])
         if realtime["regular"] is not None
         else close_price
     )
 
-    # 2️⃣ 표시 가격
     if market_open:
         display_price = base_price
         price_source = "REGULAR"
     else:
         if realtime["pre"] is not None:
-            display_price = float(realtime["pre"])
+            display_price = realtime["pre"]
             price_source = "PRE"
         elif realtime["post"] is not None:
-            display_price = float(realtime["post"])
+            display_price = realtime["post"]
             price_source = "POST"
         else:
             display_price = base_price
             price_source = "CLOSE"
 
-    # 3️⃣ 현재가 증감 (전일 종가 대비)
     current_change = base_price - prev_close
     current_change_pct = (current_change / prev_close) * 100
 
-    # 4️⃣ 시간외 증감
     after_change = None
     after_change_pct = None
     if not market_open and price_source in ("PRE", "POST"):
@@ -135,18 +131,28 @@ def resolve_prices(ticker: str):
         "price_source": price_source,
         "current_change": round(current_change, 2),
         "current_change_pct": round(current_change_pct, 2),
-        "after_change": round(after_change, 2) if after_change is not None else None,
-        "after_change_pct": round(after_change_pct, 2) if after_change_pct is not None else None,
+        "after_change": round(after_change, 2) if after_change else None,
+        "after_change_pct": round(after_change_pct, 2) if after_change_pct else None,
     }
 
-def get_kis_daily_closes(ticker: str) -> list[float]:
-    """
-    KIS 해외주식 일봉 종가 리스트 반환
-    최신 → 과거 순서면 안 되고, 과거 → 최신 순서여야 함
-    """
-    data = get_kis_overseas_daily(ticker)  # 네가 이미 쓰는 함수로 교체
-    closes = [float(d["close"]) for d in data]
-    return closes
+
+def get_yf_daily_closes(ticker: str, period="6mo") -> list[float]:
+    df = yf.download(
+        ticker,
+        period=period,
+        interval="1d",
+        progress=False,
+        threads=False
+    )
+    if df is None or df.empty:
+        raise ValueError("No yfinance data")
+
+    close = df["Close"]
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
+
+    return close.astype(float).tolist()
+
 
 @app.post("/api/order/preview")
 def order_preview(
@@ -411,35 +417,27 @@ def get_finviz_rsi(ticker: str):
 # Watchlist 화면용
 # =====================
 def get_watchlist_item(ticker: str):
-    # 가격
     p = resolve_prices(ticker)
 
-    # =========================
-    # RSI (KIS 종가 기반)
-    # =========================
-    closes = get_kis_daily_closes(ticker)  # list[float]
+    closes = get_yf_daily_closes(ticker, period="6mo")
     rsi_series = calculate_wilder_rsi_series(pd.Series(closes))
+
     rsi_today = float(rsi_series.iloc[-1])
     rsi_prev = float(rsi_series.iloc[-2])
-    rsi_change = rsi_today - rsi_prev
-    rsi_change_pct = (rsi_change / rsi_prev * 100) if rsi_prev != 0 else 0.0
 
     item = {
         "ticker": ticker,
-        # 현재가
         "current_price": p["base_price"],
         "current_change": p["current_change"],
         "current_change_pct": p["current_change_pct"],
-        # 시간외
         "display_price": p["display_price"],
         "after_change": p["after_change"],
         "after_change_pct": p["after_change_pct"],
-        # 뱃지
         "price_source": p["price_source"],
-        # RSI
         "rsi": round(rsi_today, 2),
-        "rsi_change": round(rsi_change, 2),
-        "rsi_change_pct": round(rsi_change_pct, 2),
+        "rsi_change": round(rsi_today - rsi_prev, 2),
+        "rsi_change_pct": round((rsi_today - rsi_prev) / rsi_prev * 100, 2)
+        if rsi_prev != 0 else 0.0,
     }
 
     print("WATCHLIST ITEM DEBUG:", item)
