@@ -376,6 +376,7 @@ def get_finviz_rsi(ticker: str):
         for i in range(0, len(cells), 2):
             data[cells[i].text.strip()] = cells[i + 1].text.strip()
     return float(data["RSI (14)"]), data["Change"]
+
 # =====================
 # Watchlist 화면용
 # =====================
@@ -401,50 +402,46 @@ def get_watchlist_item(ticker: str):
     realtime = get_realtime_price(ticker)
     market_open = is_us_market_open()
 
-    # =====================
-    # 현재가 (기준가) 결정
-    # =====================
-    if market_open and realtime["regular"] is not None:
-        current_price = realtime["regular"]
-        price_source = "REGULAR"
+    # ==================================================
+    # 1️⃣ 기준가 (정규장 현재가 or 종가)
+    # ==================================================
+    if realtime["regular"] is not None:
+        base_price = realtime["regular"]
     else:
-        current_price = close_price
-        price_source = "CLOSE"
+        base_price = close_price
 
-    # =====================
-    # 표시 가격 결정
-    # =====================
+    # ==================================================
+    # 2️⃣ 표시 가격 (시간외 무조건 우선)
+    # ==================================================
+    display_price = base_price
+    price_source = "REGULAR" if realtime["regular"] is not None else "CLOSE"
+
     if not market_open:
         if realtime["pre"] is not None:
-            price = realtime["pre"]
+            display_price = realtime["pre"]
             price_source = "PRE"
         elif realtime["post"] is not None:
-            price = realtime["post"]
+            display_price = realtime["post"]
             price_source = "POST"
-        else:
-            price = current_price
-    else:
-        price = current_price
 
-    # =====================
-    # 전일 종가 대비 (현재가 기준)
-    # =====================
-    current_change = current_price - prev_close
+    # ==================================================
+    # 3️⃣ 현재가 증감 (전일 종가 대비)
+    # ==================================================
+    current_change = base_price - prev_close
     current_change_pct = (current_change / prev_close) * 100
 
-    # =====================
-    # 시간외 증감 (현재가 대비)
-    # =====================
+    # ==================================================
+    # 4️⃣ 시간외 증감 (현재가 대비)
+    # ==================================================
+    after_change = None
+    after_change_pct = None
     if price_source in ("PRE", "POST"):
-        after_change = price - current_price
-        after_change_pct = (after_change / current_price) * 100
-    else:
-        after_change = 0.0
-        after_change_pct = 0.0
+        after_change = display_price - base_price
+        after_change_pct = (after_change / base_price) * 100
 
-    # =====================
-    # RSI
-    # =====================
+    # ==================================================
+    # 5️⃣ RSI
+    # ==================================================
     rsi_series = calculate_wilder_rsi_series(close)
     rsi_today = float(rsi_series.iloc[-1])
     rsi_prev = float(rsi_series.iloc[-2])
@@ -454,17 +451,20 @@ def get_watchlist_item(ticker: str):
     return {
         "ticker": ticker,
 
-        # 현재가
-        "price_source": price_source,
-        "current_price": round(current_price, 2),
+        # 🔥 기준 현재가
+        "current_price": round(base_price, 2),
         "current_change": round(current_change, 2),
         "current_change_pct": round(current_change_pct, 2),
 
-        # 시간외
-        "after_change": round(after_change, 2),
-        "after_change_pct": round(after_change_pct, 2),
+        # 🔥 시간외 (있을 때만 의미 있음)
+        "display_price": round(display_price, 2),
+        "after_change": round(after_change, 2) if after_change is not None else None,
+        "after_change_pct": round(after_change_pct, 2) if after_change_pct is not None else None,
 
-        # 종가
+        # 🔥 이 값으로 뱃지 결정
+        "price_source": price_source,
+
+        # 종가 정보
         "close_price": round(close_price, 2),
         "close_change": round(close_price - prev_close, 2),
         "close_change_pct": round(
@@ -475,9 +475,6 @@ def get_watchlist_item(ticker: str):
         "rsi": round(rsi_today, 2),
         "rsi_change": round(rsi_change, 2),
         "rsi_change_pct": round(rsi_change_pct, 2),
-
-        # ✅ 실제 표시 가격 (REGULAR/PRE/POST/CLOSE 모두 포함)
-        "display_price": round(price, 2),
     }
 
 # =====================
