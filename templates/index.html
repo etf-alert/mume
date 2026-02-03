@@ -404,10 +404,14 @@ async function loadData() {
            ${item.price_change_pct > 0 ? '+' : ''}${item.price_change_pct}%)
         </div>
       </td>
-
+      
       <!-- ✅ RSI 컬럼 -->
       <td class="cell">
-        ${item.rsi !== null && item.rsi !== undefined ? item.rsi.toFixed(1) : "-"}
+        ${item.rsi}
+        <div class="change ${item.rsi_change < 0 ? 'down' : 'up'}">
+          (${item.rsi_change > 0 ? '+' : ''}${item.rsi_change},
+          ${item.rsi_change_pct > 0 ? '+' : ''}${item.rsi_change_pct}%)
+        </div>
       </td>
 
       <td>
