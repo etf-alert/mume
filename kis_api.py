@@ -4,7 +4,7 @@ import os
 import time
 import yfinance as yf
 
-BASE_URL = "https://openapivts.koreainvestment.com:29443"
+BASE_URL = "https://openapi.koreainvestment.com:9443"
 
 APP_KEY = os.getenv("KIS_APP_KEY")
 APP_SECRET = os.getenv("KIS_APP_SECRET")
@@ -76,7 +76,7 @@ def get_overseas_avg_price(ticker: str):
         "authorization": f"Bearer {token}",
         "appkey": APP_KEY,
         "appsecret": APP_SECRET,
-        "tr_id": "VTTS3012R",
+        "tr_id": "TTTS3012R",
         "custtype": "P"
     }
     params = {
@@ -130,7 +130,7 @@ def order_overseas_stock(
     excg_cd = get_kis_exchange_code(ticker)
 
     # ✅ 해외주식 모의투자 TR_ID
-    tr_id = "VTTS0308U" if is_buy else "VTTS0307U"
+    tr_id = "TTTS0308U" if is_buy else "TTTS0307U"
 
     headers = {
         "authorization": f"Bearer {token}",
