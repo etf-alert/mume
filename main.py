@@ -81,79 +81,64 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
 
 def resolve_prices(ticker: str):
     # =========================
-    # 1️⃣ 기준 종가 (KIS)
+    # 기준 종가 (RSI와 동일 소스)
     # =========================
-    close_price = float(get_kis_close(ticker))
-    prev_close = close_price  # RSI / 증감 기준
+    closes = get_kis_daily_closes(ticker)
+    if not closes or len(closes) < 2:
+        raise ValueError("Not enough KIS close data")
+
+    close_price = float(closes[-1])
+    prev_close = float(closes[-2])
 
     # =========================
-    # 2️⃣ Alpaca 실시간 가격
+    # 실시간 / 시간외
     # =========================
-    alpaca = get_alpaca_prices(ticker)
+    realtime = get_realtime_price(ticker)
     market_open = is_us_market_open()
 
-    regular = alpaca.get("regular")
-    pre = alpaca.get("pre")
-    post = alpaca.get("post")
+    # 1️⃣ 기준 현재가 (전일 종가 대비용)
+    base_price = (
+        float(realtime["regular"])
+        if realtime["regular"] is not None
+        else close_price
+    )
 
-    # =========================
-    # 3️⃣ 기준 현재가 (정규장 우선)
-    # =========================
-    if market_open and regular is not None:
-        base_price = float(regular)
-    else:
-        base_price = close_price
-
-    # =========================
-    # 4️⃣ 표시 가격 (정규장 아니면 무조건 시간외)
-    # =========================
+    # 2️⃣ 표시 가격
     if market_open:
         display_price = base_price
         price_source = "REGULAR"
     else:
-        if pre is not None:
-            display_price = float(pre)
+        if realtime["pre"] is not None:
+            display_price = float(realtime["pre"])
             price_source = "PRE"
-        elif post is not None:
-            display_price = float(post)
+        elif realtime["post"] is not None:
+            display_price = float(realtime["post"])
             price_source = "POST"
         else:
-            display_price = close_price
+            display_price = base_price
             price_source = "CLOSE"
 
-    # =========================
-    # 5️⃣ 현재가 증감 (전일 종가 대비)
-    # =========================
+    # 3️⃣ 현재가 증감 (전일 종가 대비)
     current_change = base_price - prev_close
     current_change_pct = (current_change / prev_close) * 100
 
-    # =========================
-    # 6️⃣ 시간외 증감 (현재가 대비)
-    # =========================
+    # 4️⃣ 시간외 증감
     after_change = None
     after_change_pct = None
-
     if not market_open and price_source in ("PRE", "POST"):
         after_change = display_price - base_price
         after_change_pct = (after_change / base_price) * 100
 
     return {
-        # 기준 가격
         "base_price": round(base_price, 2),
-        "close_price": round(close_price, 2),
-
-        # 표시 가격
         "display_price": round(display_price, 2),
         "price_source": price_source,
-
-        # 현재가 증감
         "current_change": round(current_change, 2),
         "current_change_pct": round(current_change_pct, 2),
-
-        # 시간외 증감
         "after_change": round(after_change, 2) if after_change is not None else None,
         "after_change_pct": round(after_change_pct, 2) if after_change_pct is not None else None,
     }
+
 
 @app.post("/api/order/preview")
 def order_preview(
