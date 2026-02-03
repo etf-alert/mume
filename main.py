@@ -16,9 +16,7 @@ import pandas as pd
 from kis_api import order_overseas_stock, get_overseas_avg_price
 from uuid import uuid4
 from market_time import is_us_market_open, next_market_open
-from alpaca_trade_api.rest import REST
 from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data.live import StockDataStream
 from alpaca.data.requests import StockLatestTradeRequest, StockSnapshotRequest
 
 
@@ -93,39 +91,52 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
     except JWTError:
         raise HTTPException(401, "invalid token")
 
-def get_realtime_price(ticker: str):
+def get_realtime_price(ticker: str) -> dict:
+    """
+    Returns:
+    {
+        "regular": float | None,   # 정규장 최신 체결가
+        "pre": float | None,       # 장전
+        "post": float | None       # 장후
+    }
+    """
+    regular = pre = post = None
+
+    # -----------------------
+    # 정규장 최신 체결가
+    # -----------------------
     try:
-        # 최신 체결가 (정규장)
         trade_req = StockLatestTradeRequest(symbol_or_symbols=ticker)
         trade = alpaca_data.get_stock_latest_trade(trade_req)
         regular = float(trade[ticker].price)
-    except Exception as e:
-        print("Alpaca regular price error:", e)
-        regular = None
+    except Exception:
+        pass
 
+    # -----------------------
+    # 스냅샷 (pre / post)
+    # -----------------------
     try:
-        # 스냅샷 (pre / post 포함)
         snap_req = StockSnapshotRequest(symbol_or_symbols=ticker)
         snap = alpaca_data.get_stock_snapshot(snap_req)
         s = snap[ticker]
 
-        pre = float(s.daily_bar.close) if s.daily_bar else None
-        post = float(s.latest_trade.price) if s.latest_trade else None
-    except Exception as e:
-        print("Alpaca snapshot error:", e)
-        pre = None
-        post = None
+        if s.pre_market_trade:
+            pre = float(s.pre_market_trade.price)
+
+        if s.post_market_trade:
+            post = float(s.post_market_trade.price)
+
+    except Exception:
+        pass
 
     return {
         "regular": regular,
         "pre": pre,
-        "post": post
+        "post": post,
     }
 
+
 def resolve_prices(ticker: str):
-    # =========================
-    # 기준 종가 (yfinance)
-    # =========================
     closes = get_yf_daily_closes(ticker, period="5d")
     if len(closes) < 2:
         raise ValueError("Not enough yfinance close data")
@@ -133,37 +144,43 @@ def resolve_prices(ticker: str):
     close_price = closes[-1]
     prev_close = closes[-2]
 
-    # =========================
-    # 실시간 / 시간외 (Alpaca)
-    # =========================
-    realtime = get_realtime_price(ticker)  # 🔥 Alpaca
+    realtime = get_realtime_price(ticker)
     market_open = is_us_market_open()
 
-    base_price = (
-        float(realtime["regular"])
-        if realtime["regular"] is not None
-        else close_price
-    )
+    # =====================
+    # 기준가 (정규장 기준)
+    # =====================
+    if realtime["regular"] is not None:
+        base_price = realtime["regular"]
+    else:
+        base_price = close_price
 
+    # =====================
+    # 표시가 (시간대별)
+    # =====================
     if market_open:
         display_price = base_price
         price_source = "REGULAR"
     else:
-        if realtime["pre"] is not None:
-            display_price = realtime["pre"]
-            price_source = "PRE"
-        elif realtime["post"] is not None:
+        if realtime["post"] is not None:
             display_price = realtime["post"]
             price_source = "POST"
+        elif realtime["pre"] is not None:
+            display_price = realtime["pre"]
+            price_source = "PRE"
         else:
             display_price = base_price
             price_source = "CLOSE"
 
+    # =====================
+    # 변화량
+    # =====================
     current_change = base_price - prev_close
     current_change_pct = (current_change / prev_close) * 100
 
     after_change = None
     after_change_pct = None
+
     if not market_open and price_source in ("PRE", "POST"):
         after_change = display_price - base_price
         after_change_pct = (after_change / base_price) * 100
@@ -174,8 +191,8 @@ def resolve_prices(ticker: str):
         "price_source": price_source,
         "current_change": round(current_change, 2),
         "current_change_pct": round(current_change_pct, 2),
-        "after_change": round(after_change, 2) if after_change else None,
-        "after_change_pct": round(after_change_pct, 2) if after_change_pct else None,
+        "after_change": round(after_change, 2) if after_change is not None else None,
+        "after_change_pct": round(after_change_pct, 2) if after_change_pct is not None else None,
     }
 
 
