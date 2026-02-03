@@ -110,8 +110,8 @@
     <div class="label">현재가</div>
     
     <div id="currentPrice" class="value">
-      -
       <span id="priceBadge" class="badge" style="display:none"></span>
+      <span id="priceValue">-</span>
     </div>
 
   </div>
@@ -285,7 +285,7 @@ fetch(`/chart/${ticker}`)
     });
 
     latestPrice = res.current_price ?? prices.at(-1);
-    currentPriceEl.innerText = "$" + latestPrice.toFixed(2);
+    document.getElementById("priceValue").innerText = "$" + latestPrice.toFixed(2);
 
     // 🏷 장전 / 장후 뱃지
     const badge = document.getElementById("priceBadge");
