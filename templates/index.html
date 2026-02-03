@@ -389,6 +389,7 @@ async function loadData() {
           ${item.ticker}
         </button>
       </td>
+
       <td class="cell">
         ${item.price}
         ${
@@ -402,6 +403,11 @@ async function loadData() {
           (${item.price_change > 0 ? '+' : ''}${item.price_change},
            ${item.price_change_pct > 0 ? '+' : ''}${item.price_change_pct}%)
         </div>
+      </td>
+
+      <!-- ✅ RSI 컬럼 -->
+      <td class="cell">
+        ${item.rsi !== null && item.rsi !== undefined ? item.rsi.toFixed(1) : "-"}
       </td>
 
       <td>
