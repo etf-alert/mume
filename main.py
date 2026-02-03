@@ -437,6 +437,53 @@ def home(request: Request):
         "login.html",
         {"request": request}
     )
+    
+@app.get("/api/queued-orders")
+def get_queued_orders(user: str = Depends(get_current_user)):
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    rows = cur.execute("""
+        SELECT
+            id,
+            ticker,
+            side,
+            price,
+            qty,
+            execute_after,
+            status,
+            created_at
+        FROM queued_orders
+        ORDER BY created_at ASC
+    """).fetchall()
+
+    conn.close()
+
+    return {
+        "orders": [dict(r) for r in rows]
+    }
+    
+@app.delete("/api/queued-orders/{order_id}")
+def delete_queued_order(
+    order_id: str,
+    user: str = Depends(get_current_user)
+):
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+
+    cur.execute(
+        "DELETE FROM queued_orders WHERE id = ?",
+        (order_id,)
+    )
+    deleted = cur.rowcount
+    conn.commit()
+    conn.close()
+
+    if deleted == 0:
+        raise HTTPException(404, "order not found")
+
+    return {"deleted": order_id}
 
 @app.get("/tickers")
 def get_tickers():
