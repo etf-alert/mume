@@ -206,8 +206,6 @@
   
   <div id="pullIndicator">⬇️ 당겨서 새로고침</div>
   
-<button onclick="loadQueuedOrders()">🕒 장전 주문 보기</button>
-
 <div id="queued-orders" style="margin-top:20px;"></div>
 
   <div class="add-box">
@@ -419,6 +417,7 @@ window.onload = () => {
   if (localStorage.getItem("token")) {
     document.getElementById("login-box").style.display = "none";
     loadData();
+    loadQueuedOrders();   // ✅ 자동 표시
   }
 };
 
