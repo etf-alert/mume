@@ -425,14 +425,24 @@ def get_watchlist_item(ticker: str):
     current_change = price - prev_close
     current_change_pct = (current_change / prev_close) * 100
 
-    # =====================
-    # 시간외 증감 (종가 대비)
-    # =====================
-    after_change = None
-    after_change_pct = None
-    if price_source in ("PRE", "POST"):
-        after_change = price - close_price
-        after_change_pct = (after_change / close_price) * 100
+  # =====================
+  # 기준 현재가 결정
+  # =====================
+  base_price = None
+  if realtime["regular"] is not None:
+      base_price = realtime["regular"]
+  else:
+      base_price = close_price
+
+  # =====================
+  # 시간외 기준 증감 (현재가 대비)
+  # =====================
+  after_change = None
+  after_change_pct = None
+
+  if price_source in ("PRE", "POST") and base_price is not None:
+      after_change = price - base_price
+      after_change_pct = (after_change / base_price) * 100
 
     # =====================
     # RSI
@@ -447,21 +457,21 @@ def get_watchlist_item(ticker: str):
         "ticker": ticker,
 
         # 현재가
-        "current_price": round(price, 2),
         "price_source": price_source,
 
         # 🔥 현재가 기준 증감 (전일 종가 대비)
-        "current_change": round(current_change, 2),
-        "current_change_pct": round(current_change_pct, 2),
+        "current_price": round(base_price, 2),
+        "current_change": round(base_price - prev_close, 2),
+        "current_change_pct": round(
+            ((base_price - prev_close) / prev_close) * 100, 2
+        ),
+        "after_change": round(after_change, 2) if after_change is not None else None,
+        "after_change_pct": round(after_change_pct, 2) if after_change_pct is not None else None,
 
         # 종가 정보
         "close_price": round(close_price, 2),
         "close_change": round(close_price - prev_close, 2),
         "close_change_pct": round(((close_price - prev_close) / prev_close) * 100, 2),
-
-        # 시간외
-        "after_change": round(after_change, 2) if after_change is not None else None,
-        "after_change_pct": round(after_change_pct, 2) if after_change_pct is not None else None,
 
         # RSI
         "rsi": round(rsi_today, 2),
