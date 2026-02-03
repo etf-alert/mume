@@ -254,61 +254,41 @@ def execute_order(
         raise HTTPException(status_code=400, detail=msg)
 
 # =====================
-# DB 설정 (Cron용)
+# DB 설정
 # =====================
 DB_FILE = "rsi_history.db"
-conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-cur = conn.cursor()
-cur.execute("""
-CREATE TABLE IF NOT EXISTS rsi_history (
-    ticker TEXT,
-    day TEXT,
-    rsi REAL,
-    price REAL,
-    PRIMARY KEY (ticker, day)
-)
-""")
-conn.commit()
 
-import sqlite3
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
 
-conn = sqlite3.connect("rsi_history.db")
-cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS rsi_history (
+        ticker TEXT,
+        day TEXT,
+        rsi REAL,
+        price REAL,
+        PRIMARY KEY (ticker, day)
+    )
+    """)
 
-conn.commit()
-conn.close()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS queued_orders (
+        id TEXT PRIMARY KEY,
+        ticker TEXT NOT NULL,
+        side TEXT NOT NULL,
+        price REAL NOT NULL,
+        qty INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        execute_after TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'PENDING'
+    )
+    """)
 
+    conn.commit()
+    conn.close()
 
-cur.execute("""
-CREATE TABLE queued_orders (
-    id TEXT PRIMARY KEY,
-    ticker TEXT NOT NULL,
-    side TEXT NOT NULL,
-    price REAL NOT NULL,
-    qty INTEGER NOT NULL,
-    created_at TEXT NOT NULL,
-    execute_after TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'PENDING'
-)
-""")
-conn.commit()
-
-# =====================
-# 장전 주문 큐 테이블
-# =====================
-cur.execute("""
-CREATE TABLE IF NOT EXISTS queued_orders (
-    id TEXT PRIMARY KEY,
-    ticker TEXT NOT NULL,
-    side TEXT NOT NULL,
-    price REAL NOT NULL,
-    qty INTEGER NOT NULL,
-    created_at TEXT NOT NULL,
-    execute_after TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'PENDING'
-)
-""")
-conn.commit()
+init_db()
 
 # =====================
 # FastAPI
