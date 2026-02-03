@@ -669,30 +669,59 @@ def chart_data(ticker: str, user=Depends(get_current_user)):
             "rsi": round(float(rsi_series.iloc[i]), 2)
             if not pd.isna(rsi_series.iloc[i]) else None
         })
+        
+    # ===== 기준 가격 =====
+    close_price = float(close.iloc[-1])
+    prev_close = float(close.iloc[-2])
 
-    # ===== 현재가 =====
+    # ===== 현재가 결정 =====
     realtime = get_realtime_price(ticker)
+    market_open = is_us_market_open()
 
-    if realtime["pre"] is not None:
-        current_price = realtime["pre"]
-        price_source = "PRE"
-    elif realtime["post"] is not None:
-        current_price = realtime["post"]
-        price_source = "POST"
-    elif realtime["regular"] is not None:
+    if market_open and realtime["regular"] is not None:
         current_price = realtime["regular"]
         price_source = "REGULAR"
     else:
-        current_price = float(close.iloc[-1])
+        current_price = close_price
         price_source = "CLOSE"
+
+    # ===== 표시 가격 (시간외 우선) =====
+    price = current_price
+    if not market_open:
+        if realtime["pre"] is not None:
+            price = realtime["pre"]
+            price_source = "PRE"
+        elif realtime["post"] is not None:
+            price = realtime["post"]
+            price_source = "POST"
+
+    # ===== 전일 종가 대비 (현재가 기준) =====
+    current_change = current_price - prev_close
+    current_change_pct = (current_change / prev_close) * 100
+
+    # ===== 시간외 증감 (현재가 대비) =====
+    if price_source in ("PRE", "POST"):
+        after_change = price - current_price
+        after_change_pct = (after_change / current_price) * 100
+    else:
+        after_change = 0.0
+        after_change_pct = 0.0
 
     return {
         "ticker": ticker,
-        "history": history,              # ✅ 필수
-        "current_price": round(current_price, 2),  # ✅ 필수
-        "price_source": price_source     # ✅ 필수
-    }
+        "history": history,
 
+        # 🔥 현재가
+        "current_price": round(current_price, 2),
+        "current_change": round(current_change, 2),
+        "current_change_pct": round(current_change_pct, 2),
+
+        # 🔥 시간외
+        "after_change": round(after_change, 2),
+        "after_change_pct": round(after_change_pct, 2),
+
+        "price_source": price_source
+    }
 
 @app.get("/chart-page", response_class=HTMLResponse)
 def chart_page(request: Request):
