@@ -155,46 +155,6 @@ def resolve_prices(ticker: str):
         "after_change_pct": round(after_change_pct, 2) if after_change_pct is not None else None,
     }
 
-     
-def get_realtime_price(ticker: str):
-    """
-    정규장: KIS
-    장외: yfinance
-    """
-    regular = None
-    pre = None
-    post = None
-
-    # ======================
-    # 1️⃣ 정규장 → KIS
-    # ======================
-    if is_us_market_open():
-        try:
-            kis = get_kis_overseas_price(ticker)
-            regular = float(kis["price"])
-        except Exception as e:
-            print("KIS price error:", e)
-
-    # ======================
-    # 2️⃣ 장외 → yfinance
-    # ======================
-    try:
-        yf_ticker = yf.Ticker(ticker)
-        info = yf_ticker.fast_info
-        if info:
-            pre_val = info.get("preMarketPrice")
-            post_val = info.get("postMarketPrice")
-            pre = float(pre_val) if pre_val is not None else None
-            post = float(post_val) if post_val is not None else None
-    except Exception as e:
-        print("yfinance pre/post error:", e)
-
-    return {
-        "regular": regular,
-        "pre": pre,
-        "post": post
-    }
-
 @app.post("/api/order/preview")
 def order_preview(
     data: dict,
