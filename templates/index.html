@@ -220,11 +220,23 @@ async function authFetch(url, options = {}) {
 const body = document.getElementById("tableBody");
 
 async function loadQueuedOrders() {
-    const res = await fetch("/api/queued-orders");
-    const data = await res.json();
+    let res;
+    try {
+        res = await authFetch("/api/queued-orders");
+    } catch (e) {
+        alert("로그인이 필요합니다");
+        return;
+    }
 
+    if (!res.ok) {
+        alert("장전 주문 조회 실패");
+        return;
+    }
+
+    const data = await res.json();
     const box = document.getElementById("queued-orders");
-    if (data.orders.length === 0) {
+
+    if (!data.orders || data.orders.length === 0) {
         box.innerHTML = "<p>대기 중인 주문 없음</p>";
         return;
     }
@@ -260,8 +272,8 @@ async function loadQueuedOrders() {
 
 async function deleteQueuedOrder(orderId) {
     if (!confirm("이 주문을 삭제할까요?")) return;
-
-    const res = await fetch(`/api/queued-orders/${orderId}`, {
+  
+    const res = await authFetch(`/api/queued-orders/${orderId}`, {
         method: "DELETE"
     });
 
