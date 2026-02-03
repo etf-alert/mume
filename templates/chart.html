@@ -303,31 +303,31 @@ authFetch(`/chart/${ticker}`)
       subLine.innerHTML = "";
 
     } else {
-      // =======================
-      // 종가 (전일 종가 대비)
-      // =======================
-      mainLine.innerHTML = `
-        $${res.close_price.toFixed(2)}
-        <span class="${updown(res.close_change)}">
-          (${sign(res.close_change)}${res.close_change},
-           ${sign(res.close_change_pct)}${res.close_change_pct}%)
-        </span>
-      `;
+  // =======================
+  // 기준 종가 (전일 대비)
+  // =======================
+  mainLine.innerHTML = `
+    $${res.current_price.toFixed(2)}
+    <span class="${updown(res.current_change)}">
+      (${sign(res.current_change)}${res.current_change},
+       ${sign(res.current_change_pct)}${res.current_change_pct}%)
+    </span>
+  `;
 
-      // =======================
-      // 시간외 (현재가 대비)
-      // =======================
-      subLine.innerHTML = `
-        <span class="badge ${res.price_source.toLowerCase()}">
-          ${res.price_source}
-        </span>
-        $${latestPrice.toFixed(2)}
-        <span class="${updown(res.after_change)}">
-          (${sign(res.after_change)}${res.after_change},
-           ${sign(res.after_change_pct)}${res.after_change_pct}%)
-        </span>
-      `;
-    }
+  // =======================
+  // 시간외 가격 (종가 대비)
+  // =======================
+  subLine.innerHTML = `
+    <span class="badge ${res.price_source.toLowerCase()}">
+      ${res.price_source}
+    </span>
+    $${res.display_price.toFixed(2)}
+    <span class="${updown(res.after_change)}">
+      (${sign(res.after_change)}${res.after_change},
+       ${sign(res.after_change_pct)}${res.after_change_pct}%)
+    </span>
+  `;
+}
 
     drawCharts();
     updateLevels();
