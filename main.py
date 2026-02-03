@@ -29,14 +29,6 @@ alpaca = REST(
     base_url="https://paper-api.alpaca.markets"  # paper trading
 )
 
-
-alpaca = REST(
-    ALPACA_KEY,
-    ALPACA_SECRET,
-    ALPACA_BASE_URL,
-    api_version="v2"
-)
-
 if SECRET_KEY == "change-this":
     raise RuntimeError("JWT_SECRET not set")
 
