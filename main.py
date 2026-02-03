@@ -593,6 +593,21 @@ from fastapi.responses import JSONResponse
 
 @app.get("/chart/{ticker}")
 def chart_data(ticker: str):
+    realtime = get_realtime_price(ticker)
+
+    price_source = "CLOSE"
+    current_price = None
+
+    if realtime["pre"] is not None:
+        current_price = realtime["pre"]
+        price_source = "PRE"
+    elif realtime["post"] is not None:
+        current_price = realtime["post"]
+        price_source = "POST"
+    elif realtime["regular"] is not None:
+        current_price = realtime["regular"]
+        price_source = "REGULAR"
+
     df = yf.download(ticker,
                      period="2y",
                      interval="1d",
@@ -616,8 +631,12 @@ def chart_data(ticker: str):
             "price": round(float(close.iloc[i]), 2),
             "rsi": round(float(rsi_series.iloc[i]), 2)
         })
-    return JSONResponse(data)
-    
+    return JSONResponse({
+        "history": data,
+        "current_price": round(current_price, 2) if current_price else None,
+        "price_source": price_source
+    })
+
 @app.get("/chart-page", response_class=HTMLResponse)
 def chart_page(request: Request):
     return templates.TemplateResponse("chart.html", {"request": request})
