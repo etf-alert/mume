@@ -475,6 +475,9 @@ def get_watchlist_item(ticker: str):
         "rsi": round(rsi_today, 2),
         "rsi_change": round(rsi_change, 2),
         "rsi_change_pct": round(rsi_change_pct, 2),
+
+        # ✅ 실제 표시 가격 (REGULAR/PRE/POST/CLOSE 모두 포함)
+        "display_price": round(price, 2),
     }
 
 # =====================
