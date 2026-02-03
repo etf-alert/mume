@@ -279,7 +279,9 @@ fetch(`/chart/${ticker}`)
     data.slice(-SHOW_DAYS).forEach(d => {
       labels.push(d.date);
       prices.push(d.price);
-      rsis.push(d.rsi);
+      rsis.push(
+        typeof d.rsi === "number" ? d.rsi : null
+      );
     });
 
     latestPrice = res.current_price ?? prices.at(-1);
@@ -335,8 +337,10 @@ fetch(`/api/avg-price/${ticker}`)
 /* ===== 차트 ===== */
 function drawCharts() {
   const xTick = (_, i) => {
-    const [y, m] = labels[i].split("-");
-    return `${y.slice(2)}.${parseInt(m)}`;
+    if (!labels[i]) return "";
+    const d = new Date(labels[i]);
+    if (isNaN(d)) return "";
+    return `${String(d.getFullYear()).slice(2)}.${d.getMonth() + 1}`;
   };
 
   new Chart(priceChartEl, {
