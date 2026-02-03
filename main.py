@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
 from fastapi import FastAPI, HTTPException, Query, Request, Depends
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import OAuth2PasswordBearer
@@ -19,8 +19,6 @@ from market_time import is_us_market_open, next_market_open
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockLatestTradeRequest, StockSnapshotRequest
 from market_time import (is_us_market_open,is_us_premarket,is_us_postmarket,)
-
-
 
 SECRET_KEY = os.getenv("JWT_SECRET", "change-this")
 ALGORITHM = "HS256"
@@ -69,8 +67,6 @@ def get_market_phase(now=None):
 app = FastAPI()
 ORDER_CACHE = {}
 
-from fastapi.responses import JSONResponse
-
 @app.post("/api/auth/login")
 def login(data: dict):
     user_id = data["id"]
@@ -99,44 +95,68 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         return payload["sub"]
     except JWTError:
         raise HTTPException(401, "invalid token")
-
-def get_realtime_price(ticker: str) -> dict:
+        
+def get_yahoo_quote(ticker: str) -> dict:
     """
     Returns:
     {
-        "regular": float | None,   # 정규장 최신 체결가
-        "pre": float | None,       # 장전
-        "post": float | None       # 장후
+        "regular": float | None,
+        "pre": float | None,
+        "post": float | None
     }
+    """
+    url = "https://query1.finance.yahoo.com/v7/finance/quote"
+    params = {"symbols": ticker}
+    try:
+        r = requests.get(url, params=params, timeout=3)
+        r.raise_for_status()
+        q = r.json()["quoteResponse"]["result"][0]
+
+        return {
+            "regular": q.get("regularMarketPrice"),
+            "pre": q.get("preMarketPrice"),
+            "post": q.get("postMarketPrice"),
+        }
+    except Exception:
+        return {"regular": None, "pre": None, "post": None}
+
+def get_realtime_price(ticker: str) -> dict:
+    """
+    Alpaca 우선 → Yahoo fallback
     """
     regular = pre = post = None
 
-    # -----------------------
-    # 정규장 최신 체결가
-    # -----------------------
+    # =====================
+    # Alpaca
+    # =====================
     try:
-        trade_req = StockLatestTradeRequest(symbol_or_symbols=ticker)
-        trade = alpaca_data.get_stock_latest_trade(trade_req)
+        trade = alpaca_data.get_stock_latest_trade(
+            StockLatestTradeRequest(symbol_or_symbols=ticker)
+        )
         regular = float(trade[ticker].price)
     except Exception:
         pass
 
-    # -----------------------
-    # 스냅샷 (pre / post)
-    # -----------------------
     try:
-        snap_req = StockSnapshotRequest(symbol_or_symbols=ticker)
-        snap = alpaca_data.get_stock_snapshot(snap_req)
+        snap = alpaca_data.get_stock_snapshot(
+            StockSnapshotRequest(symbol_or_symbols=ticker)
+        )
         s = snap[ticker]
-
         if s.pre_market_trade:
             pre = float(s.pre_market_trade.price)
-
         if s.post_market_trade:
             post = float(s.post_market_trade.price)
-
     except Exception:
         pass
+
+    # =====================
+    # Yahoo fallback
+    # =====================
+    if pre is None or post is None:
+        y = get_yahoo_quote(ticker)
+        pre = pre or y["pre"]
+        post = post or y["post"]
+        regular = regular or y["regular"]
 
     return {
         "regular": regular,
@@ -147,72 +167,47 @@ def get_realtime_price(ticker: str) -> dict:
 
 def resolve_prices(ticker: str):
     closes = get_yf_daily_closes(ticker, period="5d")
-    if len(closes) < 2:
-        raise ValueError("Not enough yfinance close data")
-
     close_price = closes[-1]
-    prev_close  = closes[-2]
+    prev_close = closes[-2]
 
     realtime = get_realtime_price(ticker)
+    phase = get_market_phase()
 
     # =====================
-    # 기준가 (정규장 기준)
+    # 기준가 (항상 정규장 기준)
     # =====================
-    base_price = (
-        realtime["regular"]
-        if realtime["regular"] is not None
-        else close_price
-    )
+    base_price = realtime["regular"] or close_price
 
     # =====================
-    # Phase 판별 (시간 기준)
-    # =====================
-    if is_us_market_open():
-        phase = "REGULAR"
-    elif is_us_premarket():
-        phase = "PRE"
-    elif is_us_postmarket():
-        phase = "POST"
-    else:
-        phase = "CLOSE"
-
-    # =====================
-    # 표시가 (phase + 데이터 기준)
+    # 표시가
     # =====================
     if phase == "REGULAR":
         display_price = base_price
         price_source = "REGULAR"
+        after_change = after_change_pct = None   # ✅ 정규장엔 시간외 숨김
 
     elif phase == "PRE" and realtime["pre"] is not None:
         display_price = realtime["pre"]
         price_source = "PRE"
+        after_change = display_price - base_price
+        after_change_pct = (after_change / base_price) * 100
 
     elif phase == "POST" and realtime["post"] is not None:
         display_price = realtime["post"]
         price_source = "POST"
+        after_change = display_price - base_price
+        after_change_pct = (after_change / base_price) * 100
 
     else:
         display_price = base_price
         price_source = "CLOSE"
-       # =====================
-    # 변화량
+        after_change = after_change_pct = None
+
+    # =====================
+    # 정규장 변화량
     # =====================
     current_change = base_price - prev_close
     current_change_pct = (current_change / prev_close) * 100
-
-    after_change = None
-    after_change_pct = None
-
-    if phase in ("PRE", "POST"):
-        after_change = display_price - base_price
-        after_change_pct = (
-            (after_change / base_price) * 100
-            if base_price else 0.0
-        )
-    else:
-        # ✅ 정규장 / CLOSE에서는 무조건 제거
-        after_change = None
-        after_change_pct = None
 
     return {
         "base_price": round(base_price, 2),
@@ -223,6 +218,7 @@ def resolve_prices(ticker: str):
         "after_change": round(after_change, 2) if after_change is not None else None,
         "after_change_pct": round(after_change_pct, 2) if after_change_pct is not None else None,
     }
+
 
 def get_yf_daily_closes(ticker: str, period="6mo") -> list[float]:
     df = yf.download(
