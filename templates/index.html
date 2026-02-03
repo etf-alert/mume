@@ -407,38 +407,41 @@ async function loadData() {
       </td>
 
      <td class="cell">
-      ${
-        item.price_source === "REGULAR"
-          ? `
-            <span class="price-value">${item.price}</span>
-            <div class="change ${item.price_change < 0 ? 'down' : 'up'}">
-              (${item.price_change > 0 ? '+' : ''}${item.price_change},
-               ${item.price_change_pct > 0 ? '+' : ''}${item.price_change_pct}%)
-            </div>
-          `
-          : `
-            <!-- ✅ 직전 종가 -->
-            <div class="price-close">
-              ${item.close_price}
-            </div>
-    
-            <!-- ✅ 시간외 가격 -->
-            <div class="price-after">
-              <span class="badge ${item.price_source.toLowerCase()}">
-                ${item.price_source}
-              </span>
-              <span class="price-value">${item.price}</span>
-            </div>
+  ${
+    item.price_source === "REGULAR"
+      ? `
+        <div class="price-close">
+          ${item.price}
+        </div>
+        <div class="change ${item.close_change < 0 ? 'down' : 'up'}">
+          (${item.close_change > 0 ? '+' : ''}${item.close_change},
+           ${item.close_change_pct > 0 ? '+' : ''}${item.close_change_pct}%)
+        </div>
+      `
+      : `
+        <!-- 종가 + 종가 기준 증감 -->
+        <div class="price-close">
+          ${item.close_price}
+        </div>
+        <div class="change ${item.close_change < 0 ? 'down' : 'up'}">
+          (${item.close_change > 0 ? '+' : ''}${item.close_change},
+           ${item.close_change_pct > 0 ? '+' : ''}${item.close_change_pct}%)
+        </div>
 
-            <!-- ✅ 종가 대비 증감 -->
-            <div class="change ${item.after_change < 0 ? 'down' : 'up'}">
-              (${item.after_change > 0 ? '+' : ''}${item.after_change},
-               ${item.after_change_pct > 0 ? '+' : ''}${item.after_change_pct}%)
-            </div>
-          `
-      }
-    </td>
-
+        <!-- 시간외 가격 -->
+        <div class="price-after">
+          <span class="badge ${item.price_source.toLowerCase()}">
+            ${item.price_source}
+          </span>
+          ${item.price}
+        </div>
+        <div class="change ${item.after_change < 0 ? 'down' : 'up'}">
+          (${item.after_change > 0 ? '+' : ''}${item.after_change},
+           ${item.after_change_pct > 0 ? '+' : ''}${item.after_change_pct}%)
+        </div>
+      `
+  }
+</td>
       
       <!-- ✅ RSI 컬럼 -->
       <td class="cell">
