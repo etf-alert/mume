@@ -81,16 +81,15 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         
 def get_realtime_price(ticker: str):
     """
-    장중(REGULAR): KIS API
-    장전(PRE) / 장후(POST): yfinance fast_info
+    정규장: KIS
+    장외: yfinance
     """
     regular = None
     pre = None
     post = None
-    close = None
 
     # ======================
-    # 1️⃣ 장중 가격 - KIS
+    # 1️⃣ 정규장 → KIS
     # ======================
     if is_us_market_open():
         try:
@@ -100,28 +99,23 @@ def get_realtime_price(ticker: str):
             print("KIS price error:", e)
 
     # ======================
-    # 2️⃣ 시간외 / 종가 - yfinance
+    # 2️⃣ 장외 → yfinance
     # ======================
     try:
         yf_ticker = yf.Ticker(ticker)
         info = yf_ticker.fast_info
-
-        pre_val = info.get("preMarketPrice")
-        post_val = info.get("postMarketPrice")
-        close_val = info.get("previousClose")
-
-        pre = float(pre_val) if pre_val else None
-        post = float(post_val) if post_val else None
-        close = float(close_val) if close_val else None
-
+        if info:
+            pre_val = info.get("preMarketPrice")
+            post_val = info.get("postMarketPrice")
+            pre = float(pre_val) if pre_val is not None else None
+            post = float(post_val) if post_val is not None else None
     except Exception as e:
-        print("yfinance price error:", e)
+        print("yfinance pre/post error:", e)
 
     return {
         "regular": regular,
         "pre": pre,
-        "post": post,
-        "close": close
+        "post": post
     }
 
 @app.post("/api/order/preview")
@@ -393,7 +387,6 @@ def get_watchlist_item(ticker: str):
         progress=False,
         threads=False
     )
-
     if df is None or df.empty:
         raise ValueError("Empty DataFrame")
 
@@ -402,39 +395,30 @@ def get_watchlist_item(ticker: str):
         close = close.iloc[:, 0]
     close = close.astype(float)
 
-    if len(close) < 2:
-        raise ValueError("Not enough data")
-
-    # =====================
-    # 기준 가격
-    # =====================
     close_price = float(close.iloc[-1])
     prev_close = float(close.iloc[-2])
 
+    realtime = get_realtime_price(ticker)
+    market_open = is_us_market_open()
+
     # =====================
-    # 실시간 가격
+    # 🔑 가격 결정 로직
     # =====================
-   realtime = get_realtime_price(ticker)
-
-    # 기준 종가 (yfinance or df)
-    close_price = realtime["close"] or float(close.iloc[-1])
-
-    price = close_price
-    price_source = "CLOSE"
-
-    # ⏰ 시간외 (종가와 다를 때만!)
-    if realtime["pre"] is not None and realtime["pre"] != close_price:
-        price = realtime["pre"]
-        price_source = "PRE"
-
-    elif realtime["post"] is not None and realtime["post"] != close_price:
-        price = realtime["post"]
-        price_source = "POST"
-
-    # 📈 장중
-    elif realtime["regular"] is not None:
+    if market_open and realtime["regular"] is not None:
+        # 정규장
         price = realtime["regular"]
         price_source = "REGULAR"
+    else:
+        # 장외 → 시간외 무조건 우선
+        if realtime["pre"] is not None:
+            price = realtime["pre"]
+            price_source = "PRE"
+        elif realtime["post"] is not None:
+            price = realtime["post"]
+            price_source = "POST"
+        else:
+            price = close_price
+            price_source = "CLOSE"
 
     # =====================
     # 종가 기준 증감
@@ -443,11 +427,10 @@ def get_watchlist_item(ticker: str):
     close_change_pct = (close_change / prev_close) * 100
 
     # =====================
-    # 시간외 기준 증감 (종가 대비)
+    # 시간외 증감 (종가 대비)
     # =====================
     after_change = None
     after_change_pct = None
-
     if price_source in ("PRE", "POST"):
         after_change = price - close_price
         after_change_pct = (after_change / close_price) * 100
@@ -464,7 +447,7 @@ def get_watchlist_item(ticker: str):
     return {
         "ticker": ticker,
 
-        # 가격
+        # 현재 표시 가격
         "price": round(price, 2),
         "price_source": price_source,
 
