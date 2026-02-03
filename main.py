@@ -101,22 +101,17 @@ def resolve_prices(ticker: str):
     realtime = get_realtime_price(ticker)
     market_open = is_us_market_open()
 
-    # =========================
-    # 1️⃣ 기준가 (전일 대비용)
-    # =========================
-    if realtime["regular"] is not None:
-        base_price = float(realtime["regular"])
-        base_source = "REGULAR"
-    else:
-        base_price = close_price
-        base_source = "CLOSE"
+    # 1️⃣ 기준 현재가 (전일 종가 대비용)
+    base_price = (
+        float(realtime["regular"])
+        if realtime["regular"] is not None
+        else close_price
+    )
 
-    # =========================
-    # 2️⃣ 표시 가격 (절대 None 금지)
-    # =========================
+    # 2️⃣ 표시 가격 (정규장 아니면 무조건 시간외 우선)
     if market_open:
         display_price = base_price
-        price_source = base_source
+        price_source = "REGULAR"
     else:
         if realtime["pre"] is not None:
             display_price = float(realtime["pre"])
@@ -125,24 +120,20 @@ def resolve_prices(ticker: str):
             display_price = float(realtime["post"])
             price_source = "POST"
         else:
-            display_price = close_price
+            # ✅ fallback 필수
+            display_price = base_price
             price_source = "CLOSE"
 
-    # =========================
     # 3️⃣ 현재가 증감 (전일 종가 대비)
-    # =========================
     current_change = base_price - prev_close
     current_change_pct = (current_change / prev_close) * 100
 
-    # =========================
-    # 4️⃣ 시간외 증감 (현재가 대비)
-    # =========================
-    if price_source in ("PRE", "POST"):
+    # 4️⃣ 시간외 증감 (기준 현재가 대비)
+    after_change = None
+    after_change_pct = None
+    if not market_open and price_source in ("PRE", "POST"):
         after_change = display_price - base_price
         after_change_pct = (after_change / base_price) * 100
-    else:
-        after_change = 0.0
-        after_change_pct = 0.0
 
     return {
         "base_price": round(base_price, 2),
@@ -150,11 +141,12 @@ def resolve_prices(ticker: str):
         "price_source": price_source,
         "current_change": round(current_change, 2),
         "current_change_pct": round(current_change_pct, 2),
-        "after_change": round(after_change, 2),
-        "after_change_pct": round(after_change_pct, 2),
+        "after_change": round(after_change, 2) if after_change is not None else None,
+        "after_change_pct": round(after_change_pct, 2) if after_change_pct is not None else None,
         "close_price": round(close_price, 2),
         "prev_close": round(prev_close, 2),
     }
+
      
 def get_realtime_price(ticker: str):
     """
