@@ -724,6 +724,7 @@ def chart_data(ticker: str, user=Depends(get_current_user)):
         "after_change_pct": round(after_change_pct, 2),
 
         "price_source": price_source
+        "display_price": round(price, 2),
     }
 
 @app.get("/chart-page", response_class=HTMLResponse)
