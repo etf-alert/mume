@@ -110,8 +110,8 @@
     <div class="label">현재가</div>
     
     <div id="currentPrice" class="value">
-      <span id="priceBadge" class="badge" style="display:none"></span>
-      <span id="priceValue">-</span>
+      <div id="mainPriceLine"></div>
+      <div id="subPriceLine" style="font-size:13px;margin-top:2px;"></div>
     </div>
 
   </div>
@@ -285,22 +285,57 @@ fetch(`/chart/${ticker}`)
     });
 
     latestPrice = res.current_price ?? prices.at(-1);
-    document.getElementById("priceValue").innerText = "$" + latestPrice.toFixed(2);
 
-    // 🏷 장전 / 장후 뱃지
-    const badge = document.getElementById("priceBadge");
-    if (res.price_source && res.price_source !== "REGULAR") {
-      badge.innerText = res.price_source;
-      badge.className = "badge " + res.price_source.toLowerCase();
-      badge.style.display = "inline-block";
-    } else {
-      badge.style.display = "none";
+    const mainLine = document.getElementById("mainPriceLine");
+    const subLine  = document.getElementById("subPriceLine");
+
+    mainLine.innerHTML = "";
+    subLine.innerHTML = "";
+
+    const updown = v => v < 0 ? "down" : "up";
+    const sign = v => v > 0 ? "+" : "";
+
+    // =======================
+    // 장중 (REGULAR)
+    // =======================
+    if (res.price_source === "REGULAR") {
+      mainLine.innerHTML = `
+        $${latestPrice.toFixed(2)}
+        <span class="${updown(res.close_change)}">
+          (${sign(res.close_change)}${res.close_change},
+           ${sign(res.close_change_pct)}${res.close_change_pct}%)
+        </span>
+      `;
+    }
+    // =======================
+    // 장전 / 장후
+    // =======================
+    else {
+      // 종가
+      mainLine.innerHTML = `
+        $${res.close_price.toFixed(2)}
+        <span class="${updown(res.close_change)}">
+          (${sign(res.close_change)}${res.close_change},
+           ${sign(res.close_change_pct)}${res.close_change_pct}%)
+        </span>
+      `;
+
+      // 시간외
+      subLine.innerHTML = `
+        <span class="badge ${res.price_source.toLowerCase()}">
+          ${res.price_source}
+        </span>
+        $${latestPrice.toFixed(2)}
+        <span class="${updown(res.after_change)}">
+          (${sign(res.after_change)}${res.after_change},
+           ${sign(res.after_change_pct)}${res.after_change_pct}%)
+        </span>
+      `;
     }
 
     drawCharts();
     updateLevels();
   });
-
   
 fetch(`/api/avg-price/${ticker}`)
   .then(r => r.json())
