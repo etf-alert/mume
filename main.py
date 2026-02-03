@@ -80,12 +80,40 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         raise HTTPException(401, "invalid token")
         
 def get_realtime_price(ticker: str):
-    fi = yf.Ticker(ticker).fast_info
+    t = yf.Ticker(ticker)
+
+    price = None
+    pre = None
+    post = None
+
+    try:
+        df = t.history(
+            period="1d",
+            interval="1m",
+            prepost=True
+        )
+
+        if not df.empty:
+            last = df.iloc[-1]
+            price = float(last["Close"])
+
+            now_utc = datetime.utcnow().time()
+
+            # 🇺🇸 미장 기준 대략 판별
+            if now_utc < datetime.strptime("14:30", "%H:%M").time():
+                pre = price
+            elif now_utc > datetime.strptime("21:00", "%H:%M").time():
+                post = price
+
+    except Exception as e:
+        print("realtime price error:", e)
+
     return {
-        "regular": fi.get("last_price"),
-        "pre": fi.get("pre_market_price"),
-        "post": fi.get("post_market_price")
+        "regular": price,
+        "pre": pre,
+        "post": post
     }
+
 
 @app.post("/api/order/preview")
 def order_preview(
