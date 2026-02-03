@@ -403,26 +403,31 @@ def get_watchlist_item(ticker: str):
     market_open = is_us_market_open()
 
     # ==================================================
-    # 1️⃣ 기준가 (정규장 현재가 or 종가)
+    # 1️⃣ 기준 현재가 (전일 종가 대비 계산용)
     # ==================================================
     if realtime["regular"] is not None:
-        base_price = realtime["regular"]
+        base_price = float(realtime["regular"])
     else:
         base_price = close_price
 
     # ==================================================
-    # 2️⃣ 표시 가격 (시간외 무조건 우선)
+    # 2️⃣ 표시 가격 (시간외 우선)
     # ==================================================
     display_price = base_price
-    price_source = "REGULAR" if market_open and realtime["regular"] is not None else "CLOSE"
+    price_source = "REGULAR" if market_open else "CLOSE"
 
     if not market_open:
         if realtime["pre"] is not None:
-            display_price = realtime["pre"]
+            display_price = float(realtime["pre"])
             price_source = "PRE"
         elif realtime["post"] is not None:
-            display_price = realtime["post"]
+            display_price = float(realtime["post"])
             price_source = "POST"
+        else:
+            hist = yf.Ticker(ticker).history(period="1d", prepost=True)
+            if not hist.empty:
+                display_price = float(hist.iloc[-1]["Close"])
+                price_source = "POST"
 
     # ==================================================
     # 3️⃣ 현재가 증감 (전일 종가 대비)
