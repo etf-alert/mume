@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from fastapi import FastAPI, HTTPException, Query, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -213,18 +213,23 @@ def execute_order(
                 order["side"],
                 order["price"],
                 order["qty"],
-                datetime.utcnow().isoformat(),
-                next_open.isoformat()
+                datetime.utcnow().isoformat(),   # UTC 저장
+                next_open.isoformat()            # ET 기준 저장
             ))
             conn.commit()
         finally:
             conn.close()
 
         ORDER_CACHE.pop(order_id, None)
+
+        # ✅ KST 변환 (응답용)
+        KST = timezone(timedelta(hours=9))
+        execute_after_kst = next_open.astimezone(KST)
+
         return {
             "status": "queued",
             "message": "장 시작 후 자동 실행",
-            "execute_after": next_open.strftime("%Y-%m-%d %H:%M (ET)")
+            "execute_after": execute_after_kst.strftime("%Y-%m-%d %H:%M (KST)")
         }
 
     # ==========================
