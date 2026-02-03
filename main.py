@@ -449,26 +449,36 @@ def get_queued_orders(user: str = Depends(get_current_user)):
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    rows = cur.execute("""
-        SELECT
-            id,
-            ticker,
-            side,
-            price,
-            qty,
-            execute_after,
-            status,
-            created_at
+    cur.execute("""
+        SELECT id, ticker, side, price, qty, execute_after
         FROM queued_orders
-        ORDER BY created_at ASC
-    """).fetchall()
-
+        WHERE status = 'PENDING'
+        ORDER BY execute_after ASC
+    """)
+    rows = cur.fetchall()
     conn.close()
 
-    return {
-        "orders": [dict(r) for r in rows]
-    }
-    
+    KST = timezone(timedelta(hours=9))
+    orders = []
+
+    for r in rows:
+        # DB에는 ET/UTC ISO 문자열 → datetime 변환
+        execute_dt = datetime.fromisoformat(r["execute_after"])
+
+        # KST 변환
+        execute_kst = execute_dt.astimezone(KST)
+
+        orders.append({
+            "id": r["id"],
+            "ticker": r["ticker"],
+            "side": r["side"],
+            "price": r["price"],
+            "qty": r["qty"],
+            "execute_after": execute_kst.strftime("%Y-%m-%d %H:%M (KST)")
+        })
+
+    return {"orders": orders}
+
 @app.delete("/api/queued-orders/{order_id}")
 def delete_queued_order(
     order_id: str,
