@@ -9,4 +9,4 @@ pandas
 python-jose[cryptography]
 python-dotenv
 pandas_market_calendars
-alpaca-trade-api
+alpaca-py
