@@ -181,9 +181,12 @@ def resolve_prices(ticker: str):
     after_change = None
     after_change_pct = None
 
-    if not market_open and price_source in ("PRE", "POST"):
+    if not market_open:
         after_change = display_price - base_price
-        after_change_pct = (after_change / base_price) * 100
+        after_change_pct = (
+            (after_change / base_price) * 100
+            if base_price != 0 else 0.0
+        )
 
     return {
         "base_price": round(base_price, 2),
@@ -194,7 +197,6 @@ def resolve_prices(ticker: str):
         "after_change": round(after_change, 2) if after_change is not None else None,
         "after_change_pct": round(after_change_pct, 2) if after_change_pct is not None else None,
     }
-
 
 def get_yf_daily_closes(ticker: str, period="6mo") -> list[float]:
     df = yf.download(
