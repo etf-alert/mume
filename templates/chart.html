@@ -287,7 +287,7 @@ authFetch(`/chart/${ticker}`)
       );
     });
 
-    latestPrice = res.current_price ?? prices[prices.length - 1];
+    latestPrice = res.display_price ?? prices[prices.length - 1];
 
     if (res.price_source === "REGULAR" || res.price_source === "CLOSE") {
       // =======================
