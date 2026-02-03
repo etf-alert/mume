@@ -23,10 +23,12 @@ SECRET_KEY = os.getenv("JWT_SECRET", "change-this")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
+alpaca = REST(
+    key_id=os.getenv("ALPACA_API_KEY"),
+    secret_key=os.getenv("ALPACA_SECRET_KEY"),
+    base_url="https://paper-api.alpaca.markets"  # paper trading
+)
 
-ALPACA_KEY = os.getenv("ALPACA_API_KEY")
-ALPACA_SECRET = os.getenv("ALPACA_SECRET_KEY")
-ALPACA_BASE_URL = "https://paper-api.alpaca.markets"
 
 alpaca = REST(
     ALPACA_KEY,
@@ -94,33 +96,39 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         raise HTTPException(401, "invalid token")
 
 def get_realtime_price(ticker: str):
-    """
-    Alpaca 기준
-    regular : 정규장 현재가
-    pre     : 장전
-    post    : 장후
-    """
     regular = None
     pre = None
     post = None
 
     try:
-        trade = alpaca.get_latest_trade(ticker)
-        regular = float(trade.price)
+        # 🔥 최신 bar (1분봉)
+        barset = alpaca.get_bars(
+            ticker,
+            timeframe="1Min",
+            limit=1
+        )
+        if barset:
+            regular = float(barset[-1].c)
     except Exception as e:
         print("Alpaca regular price error:", e)
 
     try:
-        clock = alpaca.get_clock()
+        # 🔥 Snapshot (pre / post 포함)
         snap = alpaca.get_snapshot(ticker)
 
-        if not clock.is_open:
-            if snap.pre_market:
-                pre = float(snap.pre_market.price)
-            if snap.post_market:
-                post = float(snap.post_market.price)
+        if snap and snap.latest_trade:
+            regular = float(snap.latest_trade.p)
+
+        if snap and snap.daily_bar and snap.prev_daily_bar:
+            # 장외 변동은 비교용으로만 사용
+            pass
+
+        if snap and snap.latest_quote:
+            # 참고용 (필요 시)
+            pass
+
     except Exception as e:
-        print("Alpaca pre/post error:", e)
+        print("Alpaca snapshot error:", e)
 
     return {
         "regular": regular,
