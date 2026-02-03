@@ -56,7 +56,8 @@
       color: #94a3b8;
       margin-top: 1px;
     }
-    
+    .change.up { color: #22c55e; }
+    .change.down { color: #ef4444; }
     #pullIndicator {
       position: fixed;
       top: -40px;
@@ -295,7 +296,7 @@ if (res.price_source === "REGULAR") {
   // =======================
   mainLine.innerHTML = `
     $${res.current_price.toFixed(2)}
-    <span class="${updown(res.current_change)}">
+    <span class="change ${updown(res.current_change)}">
       (${sign(res.current_change)}${res.current_change},
        ${sign(res.current_change_pct)}${res.current_change_pct}%)
     </span>
@@ -307,7 +308,7 @@ if (res.price_source === "REGULAR") {
   // =======================
   mainLine.innerHTML = `
     $${res.current_price.toFixed(2)}
-    <span class="${updown(res.current_change)}">
+    <span class="change ${updown(res.current_change)}">
       (${sign(res.current_change)}${res.current_change},
        ${sign(res.current_change_pct)}${res.current_change_pct}%)
     </span>
@@ -317,7 +318,7 @@ if (res.price_source === "REGULAR") {
       ${res.price_source}
     </span>
     $${res.display_price.toFixed(2)}
-    <span class="${updown(res.after_change || 0)}">
+    <span class="change ${updown(res.after_change || 0)}">
       (${sign(res.after_change || 0)}${res.after_change || 0},
        ${sign(res.after_change_pct || 0)}${res.after_change_pct || 0}%)
     </span>
