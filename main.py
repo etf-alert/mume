@@ -426,33 +426,31 @@ def get_watchlist_item(ticker: str):
     # =========================
     closes = get_kis_daily_closes(ticker)  # list[float]
     rsi_series = calculate_wilder_rsi_series(pd.Series(closes))
-
     rsi_today = float(rsi_series.iloc[-1])
     rsi_prev = float(rsi_series.iloc[-2])
     rsi_change = rsi_today - rsi_prev
     rsi_change_pct = (rsi_change / rsi_prev * 100) if rsi_prev != 0 else 0.0
 
-    return {
+    item = {
         "ticker": ticker,
-
         # 현재가
         "current_price": p["base_price"],
         "current_change": p["current_change"],
         "current_change_pct": p["current_change_pct"],
-
         # 시간외
         "display_price": p["display_price"],
         "after_change": p["after_change"],
         "after_change_pct": p["after_change_pct"],
-
         # 뱃지
         "price_source": p["price_source"],
-
         # RSI
         "rsi": round(rsi_today, 2),
         "rsi_change": round(rsi_change, 2),
         "rsi_change_pct": round(rsi_change_pct, 2),
     }
+
+    print("WATCHLIST ITEM DEBUG:", item)
+    return item
 
 # =====================
 # Cron 저장 (선택)
