@@ -92,6 +92,30 @@
     .cell {
       padding: 10px;
     }
+    .badge {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 2px 6px;
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 4px;
+      vertical-align: middle;
+    }
+
+    .badge.pre {
+      background: #facc15;
+      color: #000;
+    }
+
+    .badge.post {
+      background: #38bdf8;
+      color: #020617;
+    }
+
+    .badge.close {
+      background: #64748b;
+      color: white;
+    }
 
     .change {
       font-size: 0.85em;
@@ -369,18 +393,19 @@ async function loadData() {
       </td>
       <td class="cell">
         ${item.price}
+        ${
+          item.price_source !== "REGULAR"
+            ? `<span class="badge ${item.price_source.toLowerCase()}">
+                 ${item.price_source}
+               </span>`
+            : ""
+        }
         <div class="change ${item.price_change < 0 ? 'down' : 'up'}">
           (${item.price_change > 0 ? '+' : ''}${item.price_change},
-          ${item.price_change_pct > 0 ? '+' : ''}${item.price_change_pct}%)
+           ${item.price_change_pct > 0 ? '+' : ''}${item.price_change_pct}%)
         </div>
       </td>
-      <td class="cell">
-        ${item.rsi}
-        <div class="change ${item.rsi_change < 0 ? 'down' : 'up'}">
-          (${item.rsi_change > 0 ? '+' : ''}${item.rsi_change},
-          ${item.rsi_change_pct > 0 ? '+' : ''}${item.rsi_change_pct}%)
-        </div>
-      </td>
+
       <td>
         <button class="delete-btn"
           onclick="deleteTicker('${item.ticker}')">✖</button>
