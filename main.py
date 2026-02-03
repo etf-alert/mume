@@ -194,8 +194,7 @@ def resolve_prices(ticker: str):
     else:
         display_price = base_price
         price_source = "CLOSE"
-
-    # =====================
+       # =====================
     # 변화량
     # =====================
     current_change = base_price - prev_close
@@ -210,6 +209,10 @@ def resolve_prices(ticker: str):
             (after_change / base_price) * 100
             if base_price else 0.0
         )
+    else:
+        # ✅ 정규장 / CLOSE에서는 무조건 제거
+        after_change = None
+        after_change_pct = None
 
     return {
         "base_price": round(base_price, 2),
