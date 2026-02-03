@@ -408,27 +408,19 @@ async function loadData() {
 
      <td class="cell">
   ${
-    item.price_source === "REGULAR"
-      ? `
-        <div class="price-close">
-          ${item.display_price}
-        </div>
-        <div class="change ${item.close_change < 0 ? 'down' : 'up'}">
-          (${item.close_change > 0 ? '+' : ''}${item.close_change},
-           ${item.close_change_pct > 0 ? '+' : ''}${item.close_change_pct}%)
-        </div>
-      `
-      : `
-        <!-- 종가 + 종가 기준 증감 -->
-        <div class="price-close">
-          ${item.close_price}
-        </div>
-        <div class="change ${item.close_change < 0 ? 'down' : 'up'}">
-          (${item.close_change > 0 ? '+' : ''}${item.close_change},
-           ${item.close_change_pct > 0 ? '+' : ''}${item.close_change_pct}%)
-        </div>
+<td class="cell">
+  <!-- 기준 현재가 (항상 표시) -->
+  <div class="price-close">
+    ${item.current_price}
+  </div>
+  <div class="change ${item.current_change < 0 ? 'down' : 'up'}">
+    (${item.current_change > 0 ? '+' : ''}${item.current_change},
+     ${item.current_change_pct > 0 ? '+' : ''}${item.current_change_pct}%)
+  </div>
 
-        <!-- 시간외 가격 -->
+  ${
+    item.display_price !== null
+      ? `
         <div class="price-after">
           <span class="badge ${item.price_source.toLowerCase()}">
             ${item.price_source}
@@ -440,6 +432,7 @@ async function loadData() {
            ${item.after_change_pct > 0 ? '+' : ''}${item.after_change_pct}%)
         </div>
       `
+      : ``
   }
 </td>
       
@@ -505,46 +498,6 @@ function deleteTicker(ticker) {
     }
   });
 
-function formatPct(v) {
-  if (v === null || v === undefined) return "-"
-  return v.toFixed(2) + "%"
-}
-
-function formatNum(v) {
-  if (v === null || v === undefined) return "-"
-  return v.toFixed(2)
-}
-
-async function loadWatchlist() {
-  const res = await fetch("/watchlist")
-  const data = await res.json()
-
-  const list = document.getElementById("watchlist")
-  list.innerHTML = ""
-
-  data.items.forEach(item => {
-    const price = item.display_price ?? item.current_price
-    const change = item.current_change
-    const changePct = item.current_change_pct
-
-    const badge = item.price_source || "CLOSE"
-
-    const row = document.createElement("div")
-    row.className = "row"
-
-    row.innerHTML = `
-      <div class="ticker">${item.ticker}</div>
-      <div class="price">${formatNum(price)}</div>
-      <div class="change">
-        ${formatNum(change)} (${formatPct(changePct)})
-      </div>
-      <div class="badge ${badge.toLowerCase()}">${badge}</div>
-    `
-    list.appendChild(row)
-  })
-}
-
-loadWatchlist()
 </script>
 
 
