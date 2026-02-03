@@ -121,7 +121,51 @@
       z-index: 9999;
       transition: top 0.2s;
     }
+    /* =========================
+   장전 / 대기 주문 테이블
+   ========================= */
+    #queued-orders table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;            /* ✅ 전체 글씨 크기 줄이기 */
+    }
+
+    #queued-orders th,
+    #queued-orders td {
+      padding: 6px 4px;           /* ✅ 셀 패딩 줄이기 */
+      text-align: center;
+    }
+
+    #queued-orders th {
+      font-size: 12px;
+      color: #93c5fd;
+      background: #020617;
+    }
+
+    #queued-orders td {
+      font-size: 13px;
+    }
+
+    /* 삭제 버튼 */
+    #queued-orders button {
+      font-size: 12px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      background: none;
+      border: 1px solid #ef4444;
+      color: #ef4444;
+      cursor: pointer;
+    }
+
+    #queued-orders button:active {
+      background: #ef4444;
+      color: white;
+    }
     
+    #queued-orders h3 {
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
   </style>
 </head>
 <body>
