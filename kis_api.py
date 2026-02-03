@@ -32,13 +32,13 @@ def get_kis_exchange_code(ticker: str) -> str:
     exchange = info.get("exchange", "")
 
     if exchange in ("NMS", "NASDAQ"):
-        code = "NASD"
+        code = "NAS"
     elif exchange in ("NYQ", "NYSE"):
         code = "NYSE"
     elif exchange in ("ASE", "AMEX"):
         code = "AMEX"
     else:
-        code = "NASD"
+        code = "NAS"
 
     _exchange_cache[ticker] = code
     return code
@@ -126,7 +126,7 @@ def order_overseas_stock(
     CANO, ACNT = ACCOUNT_NO.split("-")
 
     is_buy = side == "buy"
-    # 거래소 코드 (NASD / NYSE / AMEX)
+    # 거래소 코드 (NAS / NYSE / AMEX)
     excg_cd = get_kis_exchange_code(ticker)
 
     # ✅ 해외주식 모의투자 TR_ID
