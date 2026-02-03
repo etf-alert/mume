@@ -94,7 +94,7 @@
     }
     .badge {
       display: inline-block;
-      margin-left: 6px;
+      margin-right: 6px;
       padding: 2px 6px;
       font-size: 10px;
       font-weight: 700;
@@ -390,20 +390,21 @@ async function loadData() {
         </button>
       </td>
 
-      <td class="cell">
-        ${item.price}
-        ${
-          item.price_source !== "REGULAR"
-            ? `<span class="badge ${item.price_source.toLowerCase()}">
-                 ${item.price_source}
-               </span>`
-            : ""
-        }
-        <div class="change ${item.price_change < 0 ? 'down' : 'up'}">
-          (${item.price_change > 0 ? '+' : ''}${item.price_change},
-           ${item.price_change_pct > 0 ? '+' : ''}${item.price_change_pct}%)
-        </div>
-      </td>
+     <td class="cell">
+      ${
+        item.price_source !== "REGULAR"
+          ? `<span class="badge ${item.price_source.toLowerCase()}">
+               ${item.price_source}
+             </span>`
+          : ""
+      }
+      <span class="price-value">${item.price}</span>
+
+      <div class="change ${item.price_change < 0 ? 'down' : 'up'}">
+        (${item.price_change > 0 ? '+' : ''}${item.price_change},
+         ${item.price_change_pct > 0 ? '+' : ''}${item.price_change_pct}%)
+      </div>
+    </td>
       
       <!-- ✅ RSI 컬럼 -->
       <td class="cell">
