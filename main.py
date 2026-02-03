@@ -631,11 +631,36 @@ def app_page(request: Request):
 from fastapi.responses import JSONResponse
 
 @app.get("/chart/{ticker}")
-def chart_data(ticker: str):
-    realtime = get_realtime_price(ticker)
+def chart_data(ticker: str, user=Depends(get_current_user)):
+    df = yf.download(
+        ticker,
+        period="2y",
+        interval="1d",
+        progress=False,
+        threads=False
+    )
+    if df is None or df.empty:
+        raise HTTPException(400, "no data")
 
-    price_source = "CLOSE"
-    current_price = None
+    close = df["Close"]
+    if isinstance(close, pd.DataFrame):
+        close = close.iloc[:, 0]
+
+    close = close.astype(float)
+
+    # ===== 히스토리 =====
+    rsi_series = calculate_wilder_rsi_series(close)
+    history = []
+    for i in range(len(close)):
+        history.append({
+            "date": close.index[i].strftime("%Y-%m-%d"),
+            "price": round(float(close.iloc[i]), 2),
+            "rsi": round(float(rsi_series.iloc[i]), 2)
+            if not pd.isna(rsi_series.iloc[i]) else None
+        })
+
+    # ===== 현재가 =====
+    realtime = get_realtime_price(ticker)
 
     if realtime["pre"] is not None:
         current_price = realtime["pre"]
@@ -646,35 +671,17 @@ def chart_data(ticker: str):
     elif realtime["regular"] is not None:
         current_price = realtime["regular"]
         price_source = "REGULAR"
+    else:
+        current_price = float(close.iloc[-1])
+        price_source = "CLOSE"
 
-    df = yf.download(ticker,
-                     period="2y",
-                     interval="1d",
-                     progress=False,
-                     threads=False)
-    if df is None or df.empty:
-        raise HTTPException(status_code=404, detail="No data")
-    close = df["Close"]
-    if isinstance(close, pd.DataFrame):
-        close = close.iloc[:, 0]
-    close = close.astype(float)
-    rsi_series = calculate_wilder_rsi_series(close)
-    close_6m = close.iloc[-126:]
-    rsi_6m = rsi_series.iloc[-126:]
-    data = []
-    for i in range(len(close)):
-        if pd.isna(rsi_series.iloc[i]):
-            continue
-        data.append({
-            "date": close.index[i].strftime("%Y-%m-%d"),
-            "price": round(float(close.iloc[i]), 2),
-            "rsi": round(float(rsi_series.iloc[i]), 2)
-        })
-    return JSONResponse({
-        "history": data,
-        "current_price": round(current_price, 2) if current_price else None,
-        "price_source": price_source
-    })
+    return {
+        "ticker": ticker,
+        "history": history,              # ✅ 필수
+        "current_price": round(current_price, 2),  # ✅ 필수
+        "price_source": price_source     # ✅ 필수
+    }
+
 
 @app.get("/chart-page", response_class=HTMLResponse)
 def chart_page(request: Request):
