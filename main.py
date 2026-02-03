@@ -18,6 +18,7 @@ from uuid import uuid4
 from market_time import is_us_market_open, next_market_open
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockLatestTradeRequest, StockSnapshotRequest
+from market_time import (is_us_market_open,is_us_premarket,is_us_postmarket,)
 
 
 
@@ -56,6 +57,14 @@ def create_access_token(data: dict):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+def get_market_phase(now=None):
+    if is_us_market_open(now):
+        return "REGULAR"
+    if is_us_premarket(now):
+        return "PRE"
+    if is_us_postmarket(now):
+        return "POST"
+    return "CLOSE"
 
 app = FastAPI()
 ORDER_CACHE = {}
@@ -142,35 +151,49 @@ def resolve_prices(ticker: str):
         raise ValueError("Not enough yfinance close data")
 
     close_price = closes[-1]
-    prev_close = closes[-2]
+    prev_close  = closes[-2]
 
     realtime = get_realtime_price(ticker)
-    market_open = is_us_market_open()
 
     # =====================
     # 기준가 (정규장 기준)
     # =====================
-    if realtime["regular"] is not None:
-        base_price = realtime["regular"]
-    else:
-        base_price = close_price
+    base_price = (
+        realtime["regular"]
+        if realtime["regular"] is not None
+        else close_price
+    )
 
     # =====================
-    # 표시가 (시간대별)
+    # Phase 판별 (시간 기준)
     # =====================
-    if market_open:
+    if is_us_market_open():
+        phase = "REGULAR"
+    elif is_us_premarket():
+        phase = "PRE"
+    elif is_us_postmarket():
+        phase = "POST"
+    else:
+        phase = "CLOSE"
+
+    # =====================
+    # 표시가 (phase + 데이터 기준)
+    # =====================
+    if phase == "REGULAR":
         display_price = base_price
         price_source = "REGULAR"
+
+    elif phase == "PRE" and realtime["pre"] is not None:
+        display_price = realtime["pre"]
+        price_source = "PRE"
+
+    elif phase == "POST" and realtime["post"] is not None:
+        display_price = realtime["post"]
+        price_source = "POST"
+
     else:
-        if realtime["post"] is not None:
-            display_price = realtime["post"]
-            price_source = "POST"
-        elif realtime["pre"] is not None:
-            display_price = realtime["pre"]
-            price_source = "PRE"
-        else:
-            display_price = base_price
-            price_source = "CLOSE"
+        display_price = base_price
+        price_source = "CLOSE"
 
     # =====================
     # 변화량
@@ -181,11 +204,11 @@ def resolve_prices(ticker: str):
     after_change = None
     after_change_pct = None
 
-    if not market_open:
+    if phase in ("PRE", "POST"):
         after_change = display_price - base_price
         after_change_pct = (
             (after_change / base_price) * 100
-            if base_price != 0 else 0.0
+            if base_price else 0.0
         )
 
     return {
