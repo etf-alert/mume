@@ -388,6 +388,7 @@ def get_watchlist_item(ticker: str):
         progress=False,
         threads=False
     )
+
     if df is None or df.empty:
         raise ValueError("Empty DataFrame")
 
@@ -396,77 +397,71 @@ def get_watchlist_item(ticker: str):
         close = close.iloc[:, 0]
     close = close.astype(float)
 
-    if len(close) < 20:
+    if len(close) < 2:
         raise ValueError("Not enough data")
 
-    # ======================
-    # 기준 가격 (종가)
-    # ======================
+    # =====================
+    # 기준 가격
+    # =====================
     close_price = float(close.iloc[-1])
     prev_close = float(close.iloc[-2])
 
-    # ======================
-    # 가격 결정 우선순위
-    # ======================
-    if is_us_market_open() and realtime["regular"] is not None:
-        price = realtime["regular"]
-        price_source = "REGULAR"
+    # =====================
+    # 실시간 가격
+    # =====================
+    realtime = get_realtime_price(ticker)
 
-    elif realtime["pre"] is not None:
+    if realtime["pre"] is not None:
         price = realtime["pre"]
         price_source = "PRE"
-
     elif realtime["post"] is not None:
         price = realtime["post"]
         price_source = "POST"
-
+    elif realtime["regular"] is not None:
+        price = realtime["regular"]
+        price_source = "REGULAR"
     else:
         price = close_price
         price_source = "CLOSE"
 
-    # ======================
-    # 증감 계산
-    # ======================
-    if price_source == "REGULAR":
-        # 장중: 전일 종가 대비
-        price_change = price - prev_close
-        price_change_pct = (price_change / prev_close) * 100
+    # =====================
+    # 종가 기준 증감
+    # =====================
+    close_change = close_price - prev_close
+    close_change_pct = (close_change / prev_close) * 100
 
-        after_change = None
-        after_change_pct = None
-    else:
-        # 장외: 종가 대비
-        price_change = close_price - prev_close
-        price_change_pct = (price_change / prev_close) * 100
+    # =====================
+    # 시간외 기준 증감 (종가 대비)
+    # =====================
+    after_change = None
+    after_change_pct = None
 
+    if price_source in ("PRE", "POST"):
         after_change = price - close_price
         after_change_pct = (after_change / close_price) * 100
 
-    # ======================
+    # =====================
     # RSI
-    # ======================
+    # =====================
     rsi_series = calculate_wilder_rsi_series(close)
     rsi_today = float(rsi_series.iloc[-1])
     rsi_prev = float(rsi_series.iloc[-2])
     rsi_change = rsi_today - rsi_prev
     rsi_change_pct = (rsi_change / rsi_prev * 100) if rsi_prev != 0 else 0.0
 
-    # ======================
-    # ⚠️ 프론트가 기대하는 키 전부 포함
-    # ======================
     return {
         "ticker": ticker,
 
         # 가격
         "price": round(price, 2),
-        "close_price": round(close_price, 2),
         "price_source": price_source,
 
-        # 장중 증감
-        "price_change": round(price_change, 2),
-        "price_change_pct": round(price_change_pct, 2),
+        # 종가
+        "close_price": round(close_price, 2),
+        "close_change": round(close_change, 2),
+        "close_change_pct": round(close_change_pct, 2),
 
-        # 장외 증감 (장중이면 None)
+        # 시간외
         "after_change": round(after_change, 2) if after_change is not None else None,
         "after_change_pct": round(after_change_pct, 2) if after_change_pct is not None else None,
 
@@ -475,7 +470,6 @@ def get_watchlist_item(ticker: str):
         "rsi_change": round(rsi_change, 2),
         "rsi_change_pct": round(rsi_change_pct, 2),
     }
-
 
 # =====================
 # Cron 저장 (선택)
