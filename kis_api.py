@@ -21,28 +21,18 @@ _token_cache = {
 }
 _exchange_cache = {}
 
-# =====================
-# 거래소 판별
-# =====================
 def get_kis_exchange_code(ticker: str) -> str:
     if ticker in _exchange_cache:
         return _exchange_cache[ticker]
-
     info = yf.Ticker(ticker).fast_info
     exchange = info.get("exchange", "")
-
     if exchange in ("NMS", "NASDAQ"):
-        code = "NAS"
+        code = "NASD"
     elif exchange in ("NYQ", "NYSE"):
         code = "NYSE"
     elif exchange in ("ASE", "AMEX"):
         code = "AMEX"
-    else:
-        code = "NAS"
-
-    _exchange_cache[ticker] = code
-    return code
-        
+     
 # =====================
 # Access Token
 # =====================
@@ -124,13 +114,13 @@ def order_overseas_stock(
 ):
     token = get_access_token()
     CANO, ACNT = ACCOUNT_NO.split("-")
-
     is_buy = side == "buy"
+    
     # 거래소 코드 (NAS / NYSE / AMEX)
     excg_cd = get_kis_exchange_code(ticker)
 
-    # ✅ 해외주식 모의투자 TR_ID
-    tr_id = "TTTS0308U" if is_buy else "TTTS0307U"
+    # ✅ 미국 실전 TR_ID
+    tr_id = "TTTT1002U" if is_buy else "TTTT1006U"
 
     headers = {
         "authorization": f"Bearer {token}",
@@ -150,7 +140,7 @@ def order_overseas_stock(
 
         # 🔥 주문 방식
         # 매수: LOC / 매도: 지정가
-        "ORD_DVSN_CD": "31" if is_buy else "00",
+        "ORD_DVSN_CD": "34" if is_buy else "00",
 
         # 🔥 해외주식 주문 가격 필드
         "OVRS_ORD_UNPR": f"{price:.2f}",
