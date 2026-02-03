@@ -450,10 +450,8 @@ def get_finviz_rsi(ticker: str):
 # Watchlist 화면용
 # =====================
 def get_watchlist_item(ticker: str):
-    # ✅ 공통 가격 로직
     p = resolve_prices(ticker)
 
-    # ✅ RSI 계산
     df = yf.download(
         ticker,
         period="2y",
@@ -461,12 +459,14 @@ def get_watchlist_item(ticker: str):
         progress=False,
         threads=False
     )
+
     if df is None or df.empty:
         raise ValueError("Empty DataFrame")
 
     close = df["Close"]
     if isinstance(close, pd.DataFrame):
         close = close.iloc[:, 0]
+
     close = close.astype(float)
 
     rsi_series = calculate_wilder_rsi_series(close)
@@ -475,27 +475,23 @@ def get_watchlist_item(ticker: str):
     rsi_change = rsi_today - rsi_prev
     rsi_change_pct = (rsi_change / rsi_prev * 100) if rsi_prev != 0 else 0.0
 
-    return {
+    item = {
         "ticker": ticker,
-
-        # 🔥 기준 현재가 (전일 종가 대비)
         "current_price": p["base_price"],
         "current_change": p["current_change"],
         "current_change_pct": p["current_change_pct"],
-
-        # 🔥 시간외
         "display_price": p["display_price"],
         "after_change": p["after_change"],
         "after_change_pct": p["after_change_pct"],
-
-        # 🔥 뱃지
         "price_source": p["price_source"],
-
-        # RSI
         "rsi": round(rsi_today, 2),
         "rsi_change": round(rsi_change, 2),
         "rsi_change_pct": round(rsi_change_pct, 2),
     }
+
+    print("WATCHLIST ITEM DEBUG:", item)  # ✅ 여기
+    return item
+
 
 # =====================
 # Cron 저장 (선택)
