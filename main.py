@@ -80,40 +80,44 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         raise HTTPException(401, "invalid token")
         
 def get_realtime_price(ticker: str):
-    t = yf.Ticker(ticker)
-
-    price = None
+    """
+    장중(REGULAR): KIS API
+    장전(PRE) / 장후(POST): yfinance fast_info
+    """
+    regular = None
     pre = None
     post = None
 
+    # ======================
+    # 1️⃣ 장중 가격 - KIS
+    # ======================
+    if is_us_market_open():
+        try:
+            kis = get_kis_overseas_price(ticker)  # ← 네가 이미 쓰는 KIS 함수
+            regular = float(kis["price"])
+        except Exception as e:
+            print("KIS price error:", e)
+
+    # ======================
+    # 2️⃣ 시간외 가격 - yfinance
+    # ======================
     try:
-        df = t.history(
-            period="1d",
-            interval="1m",
-            prepost=True
-        )
+        yf_ticker = yf.Ticker(ticker)
+        info = yf_ticker.fast_info
 
-        if not df.empty:
-            last = df.iloc[-1]
-            price = float(last["Close"])
+        pre_val = info.get("preMarketPrice")
+        post_val = info.get("postMarketPrice")
 
-            now_utc = datetime.utcnow().time()
-
-            # 🇺🇸 미장 기준 대략 판별
-            if now_utc < datetime.strptime("14:30", "%H:%M").time():
-                pre = price
-            elif now_utc > datetime.strptime("21:00", "%H:%M").time():
-                post = price
-
+        pre = float(pre_val) if pre_val else None
+        post = float(post_val) if post_val else None
     except Exception as e:
-        print("realtime price error:", e)
+        print("yfinance pre/post error:", e)
 
     return {
-        "regular": price,
+        "regular": regular,
         "pre": pre,
         "post": post
     }
-
 
 @app.post("/api/order/preview")
 def order_preview(
@@ -402,19 +406,20 @@ def get_watchlist_item(ticker: str):
     prev_close = float(close.iloc[-2])
 
     # ======================
-    # 실시간 가격
+    # 가격 결정 우선순위
     # ======================
-    realtime = get_realtime_price(ticker)
-
-    if realtime.get("pre") is not None:
-        price = float(realtime["pre"])
-        price_source = "PRE"
-    elif realtime.get("post") is not None:
-        price = float(realtime["post"])
-        price_source = "POST"
-    elif realtime.get("regular") is not None:
-        price = float(realtime["regular"])
+    if is_us_market_open() and realtime["regular"] is not None:
+        price = realtime["regular"]
         price_source = "REGULAR"
+
+    elif realtime["pre"] is not None:
+        price = realtime["pre"]
+        price_source = "PRE"
+
+    elif realtime["post"] is not None:
+        price = realtime["post"]
+        price_source = "POST"
+
     else:
         price = close_price
         price_source = "CLOSE"
