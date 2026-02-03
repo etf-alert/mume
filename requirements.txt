@@ -1,6 +1,7 @@
 fastapi
 uvicorn
-requests
+requests>=2.31.0
+urllib3<2
 beautifulsoup4
 jinja2
 yfinance
