@@ -87,19 +87,20 @@ def get_realtime_price(ticker: str):
     regular = None
     pre = None
     post = None
+    close = None
 
     # ======================
     # 1️⃣ 장중 가격 - KIS
     # ======================
     if is_us_market_open():
         try:
-            kis = get_kis_overseas_price(ticker)  # ← 네가 이미 쓰는 KIS 함수
+            kis = get_kis_overseas_price(ticker)
             regular = float(kis["price"])
         except Exception as e:
             print("KIS price error:", e)
 
     # ======================
-    # 2️⃣ 시간외 가격 - yfinance
+    # 2️⃣ 시간외 / 종가 - yfinance
     # ======================
     try:
         yf_ticker = yf.Ticker(ticker)
@@ -107,16 +108,20 @@ def get_realtime_price(ticker: str):
 
         pre_val = info.get("preMarketPrice")
         post_val = info.get("postMarketPrice")
+        close_val = info.get("previousClose")
 
         pre = float(pre_val) if pre_val else None
         post = float(post_val) if post_val else None
+        close = float(close_val) if close_val else None
+
     except Exception as e:
-        print("yfinance pre/post error:", e)
+        print("yfinance price error:", e)
 
     return {
         "regular": regular,
         "pre": pre,
-        "post": post
+        "post": post,
+        "close": close
     }
 
 @app.post("/api/order/preview")
@@ -409,20 +414,27 @@ def get_watchlist_item(ticker: str):
     # =====================
     # 실시간 가격
     # =====================
-    realtime = get_realtime_price(ticker)
+   realtime = get_realtime_price(ticker)
 
-    if realtime["pre"] is not None:
+    # 기준 종가 (yfinance or df)
+    close_price = realtime["close"] or float(close.iloc[-1])
+
+    price = close_price
+    price_source = "CLOSE"
+
+    # ⏰ 시간외 (종가와 다를 때만!)
+    if realtime["pre"] is not None and realtime["pre"] != close_price:
         price = realtime["pre"]
         price_source = "PRE"
-    elif realtime["post"] is not None:
+
+    elif realtime["post"] is not None and realtime["post"] != close_price:
         price = realtime["post"]
         price_source = "POST"
+
+    # 📈 장중
     elif realtime["regular"] is not None:
         price = realtime["regular"]
         price_source = "REGULAR"
-    else:
-        price = close_price
-        price_source = "CLOSE"
 
     # =====================
     # 종가 기준 증감
