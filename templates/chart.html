@@ -208,11 +208,9 @@ const SHOW_DAYS = 252;
 
 const seedInput = document.getElementById("seedInput");
 const avgInput  = document.getElementById("avgInput");
-  
 const totalCostEl = document.getElementById("totalCost");
 const balanceEl   = document.getElementById("balance");
 
-const remainSeedEl = document.getElementById("remainSeed");  
 const priceChartEl = document.getElementById("priceChart");
 const rsiChartEl   = document.getElementById("rsiChart");
 
@@ -294,29 +292,30 @@ authFetch(`/chart/${ticker}`)
 
     const updown = v => v < 0 ? "down" : "up";
     const sign = v => v > 0 ? "+" : "";
+    const safe = v => (typeof v === "number" ? v : 0);
 
     // =======================
     // 장중 (REGULAR)
     // =======================
-    if (res.price_source === "REGULAR") {
+    if (res.price_source === "REGULAR" || res.price_source === "CLOSE") {
       mainLine.innerHTML = `
         $${latestPrice.toFixed(2)}
-        <span class="${updown(res.close_change)}">
-          (${sign(res.close_change)}${res.close_change},
-           ${sign(res.close_change_pct)}${res.close_change_pct}%)
+        <span class="${updown(safe(res.close_change))}">
+          (${sign(safe(res.close_change))}${safe(res.close_change)},
+           ${sign(safe(res.close_change_pct))}${safe(res.close_change_pct)}%)
         </span>
       `;
-    }
+
+    } else {
     // =======================
     // 장전 / 장후
     // =======================
-    else {
       // 종가
       mainLine.innerHTML = `
         $${res.close_price.toFixed(2)}
         <span class="${updown(res.close_change)}">
-          (${sign(res.close_change)}${res.close_change},
-           ${sign(res.close_change_pct)}${res.close_change_pct}%)
+          (${sign(safe(res.close_change))}${safe(res.close_change)},
+           ${sign(safe(res.close_change_pct))}${safe(res.close_change_pct)}%)
         </span>
       `;
 
@@ -327,8 +326,8 @@ authFetch(`/chart/${ticker}`)
         </span>
         $${latestPrice.toFixed(2)}
         <span class="${updown(res.after_change)}">
-          (${sign(res.after_change)}${res.after_change},
-           ${sign(res.after_change_pct)}${res.after_change_pct}%)
+          (${sign(safe(res.close_change))}${safe(res.close_change)},
+           ${sign(safe(res.close_change_pct))}${safe(res.close_change_pct)}%)
         </span>
       `;
     }
