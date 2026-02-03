@@ -16,10 +16,24 @@ import pandas as pd
 from kis_api import order_overseas_stock, get_overseas_avg_price
 from uuid import uuid4
 from market_time import is_us_market_open, next_market_open
+from alpaca_trade_api.rest import REST
+
 
 SECRET_KEY = os.getenv("JWT_SECRET", "change-this")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+
+ALPACA_KEY = os.getenv("ALPACA_API_KEY")
+ALPACA_SECRET = os.getenv("ALPACA_SECRET_KEY")
+ALPACA_BASE_URL = "https://paper-api.alpaca.markets"
+
+alpaca = REST(
+    ALPACA_KEY,
+    ALPACA_SECRET,
+    ALPACA_BASE_URL,
+    api_version="v2"
+)
 
 if SECRET_KEY == "change-this":
     raise RuntimeError("JWT_SECRET not set")
@@ -78,6 +92,41 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         return payload["sub"]
     except JWTError:
         raise HTTPException(401, "invalid token")
+
+def get_realtime_price(ticker: str):
+    """
+    Alpaca 기준
+    regular : 정규장 현재가
+    pre     : 장전
+    post    : 장후
+    """
+    regular = None
+    pre = None
+    post = None
+
+    try:
+        trade = alpaca.get_latest_trade(ticker)
+        regular = float(trade.price)
+    except Exception as e:
+        print("Alpaca regular price error:", e)
+
+    try:
+        clock = alpaca.get_clock()
+        snap = alpaca.get_snapshot(ticker)
+
+        if not clock.is_open:
+            if snap.pre_market:
+                pre = float(snap.pre_market.price)
+            if snap.post_market:
+                post = float(snap.post_market.price)
+    except Exception as e:
+        print("Alpaca pre/post error:", e)
+
+    return {
+        "regular": regular,
+        "pre": pre,
+        "post": post
+    }
 
 def resolve_prices(ticker: str):
     # =========================
