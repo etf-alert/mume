@@ -420,11 +420,10 @@ def get_watchlist_item(ticker: str):
             price = close_price
             price_source = "CLOSE"
 
-    # =====================
-    # 종가 기준 증감
-    # =====================
-    close_change = close_price - prev_close
-    close_change_pct = (close_change / prev_close) * 100
+
+    # 전일 종가 대비 현재가
+    current_change = price - prev_close
+    current_change_pct = (current_change / prev_close) * 100
 
     # =====================
     # 시간외 증감 (종가 대비)
@@ -447,14 +446,18 @@ def get_watchlist_item(ticker: str):
     return {
         "ticker": ticker,
 
-        # 현재 표시 가격
-        "price": round(price, 2),
+        # 현재가
+        "current_price": round(price, 2),
         "price_source": price_source,
 
-        # 종가
+        # 🔥 현재가 기준 증감 (전일 종가 대비)
+        "current_change": round(current_change, 2),
+        "current_change_pct": round(current_change_pct, 2),
+
+        # 종가 정보
         "close_price": round(close_price, 2),
-        "close_change": round(close_change, 2),
-        "close_change_pct": round(close_change_pct, 2),
+        "close_change": round(close_price - prev_close, 2),
+        "close_change_pct": round(((close_price - prev_close) / prev_close) * 100, 2),
 
         # 시간외
         "after_change": round(after_change, 2) if after_change is not None else None,
