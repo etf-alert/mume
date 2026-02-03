@@ -298,36 +298,37 @@ authFetch(`/chart/${ticker}`)
     // 장중 (REGULAR)
     // =======================
     if (res.price_source === "REGULAR" || res.price_source === "CLOSE") {
+      // ✅ 현재가 vs 전일 종가
       mainLine.innerHTML = `
         $${latestPrice.toFixed(2)}
+        <span class="${updown(safe(res.current_change))}">
+          (${sign(safe(res.current_change))}${safe(res.current_change)},
+           ${sign(safe(res.current_change_pct))}${safe(res.current_change_pct)}%)
+        </span>
+      `;
+    } else {
+      // =======================
+      // 장전 / 장후
+      // =======================
+
+      // ✅ 종가 (전일 종가 대비)
+      mainLine.innerHTML = `
+        $${res.close_price.toFixed(2)}
         <span class="${updown(safe(res.close_change))}">
           (${sign(safe(res.close_change))}${safe(res.close_change)},
            ${sign(safe(res.close_change_pct))}${safe(res.close_change_pct)}%)
         </span>
       `;
 
-    } else {
-    // =======================
-    // 장전 / 장후
-    // =======================
-      // 종가
-      mainLine.innerHTML = `
-        $${res.close_price.toFixed(2)}
-        <span class="${updown(res.close_change)}">
-          (${sign(safe(res.close_change))}${safe(res.close_change)},
-           ${sign(safe(res.close_change_pct))}${safe(res.close_change_pct)}%)
-        </span>
-      `;
-
-      // 시간외
+      // ✅ 시간외 (종가 대비)
       subLine.innerHTML = `
         <span class="badge ${res.price_source.toLowerCase()}">
           ${res.price_source}
         </span>
         $${latestPrice.toFixed(2)}
-        <span class="${updown(res.after_change)}">
-          (${sign(safe(res.close_change))}${safe(res.close_change)},
-           ${sign(safe(res.close_change_pct))}${safe(res.close_change_pct)}%)
+        <span class="${updown(safe(res.after_change))}">
+          (${sign(safe(res.after_change))}${safe(res.after_change)},
+           ${sign(safe(res.after_change_pct))}${safe(res.after_change_pct)}%)
         </span>
       `;
     }
