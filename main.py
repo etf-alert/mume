@@ -377,55 +377,100 @@ def get_finviz_rsi(ticker: str):
 # Watchlist 화면용
 # =====================
 def get_watchlist_item(ticker: str):
-    df = yf.download(ticker,
-                     period="2y",
-                     interval="1d",
-                     progress=False,
-                     threads=False)
+    df = yf.download(
+        ticker,
+        period="2y",
+        interval="1d",
+        progress=False,
+        threads=False
+    )
     if df is None or df.empty:
         raise ValueError("Empty DataFrame")
+
     close = df["Close"]
     if isinstance(close, pd.DataFrame):
         close = close.iloc[:, 0]
     close = close.astype(float)
+
     if len(close) < 20:
         raise ValueError("Not enough data")
-    # 가격
+
+    # ======================
+    # 기준 가격 (종가)
+    # ======================
+    close_price = float(close.iloc[-1])
+    prev_close = float(close.iloc[-2])
+
+    # ======================
+    # 실시간 가격
+    # ======================
     realtime = get_realtime_price(ticker)
 
-    # 가격 + 출처 명확히 결정
-    if realtime["pre"] is not None:
-        price = realtime["pre"]
+    if realtime.get("pre") is not None:
+        price = float(realtime["pre"])
         price_source = "PRE"
-    elif realtime["post"] is not None:
-        price = realtime["post"]
+    elif realtime.get("post") is not None:
+        price = float(realtime["post"])
         price_source = "POST"
-    elif realtime["regular"] is not None:
-        price = realtime["regular"]
+    elif realtime.get("regular") is not None:
+        price = float(realtime["regular"])
         price_source = "REGULAR"
     else:
-        price = float(close.iloc[-1])
+        price = close_price
         price_source = "CLOSE"
 
-    prev_price = float(close.iloc[-2])
-    price_change = price - prev_price
-    price_change_pct = (price_change / prev_price) * 100
+    # ======================
+    # 증감 계산
+    # ======================
+    if price_source == "REGULAR":
+        # 장중: 전일 종가 대비
+        price_change = price - prev_close
+        price_change_pct = (price_change / prev_close) * 100
+
+        after_change = None
+        after_change_pct = None
+    else:
+        # 장외: 종가 대비
+        price_change = close_price - prev_close
+        price_change_pct = (price_change / prev_close) * 100
+
+        after_change = price - close_price
+        after_change_pct = (after_change / close_price) * 100
+
+    # ======================
     # RSI
+    # ======================
     rsi_series = calculate_wilder_rsi_series(close)
     rsi_today = float(rsi_series.iloc[-1])
     rsi_prev = float(rsi_series.iloc[-2])
     rsi_change = rsi_today - rsi_prev
     rsi_change_pct = (rsi_change / rsi_prev * 100) if rsi_prev != 0 else 0.0
+
+    # ======================
+    # ⚠️ 프론트가 기대하는 키 전부 포함
+    # ======================
     return {
         "ticker": ticker,
+
+        # 가격
         "price": round(price, 2),
-        "price_source": price_source,  # ✅ 추가
+        "close_price": round(close_price, 2),
+        "price_source": price_source,
+
+        # 장중 증감
         "price_change": round(price_change, 2),
         "price_change_pct": round(price_change_pct, 2),
+
+        # 장외 증감 (장중이면 None)
+        "after_change": round(after_change, 2) if after_change is not None else None,
+        "after_change_pct": round(after_change_pct, 2) if after_change_pct is not None else None,
+
+        # RSI
         "rsi": round(rsi_today, 2),
         "rsi_change": round(rsi_change, 2),
-        "rsi_change_pct": round(rsi_change_pct, 2)
+        "rsi_change_pct": round(rsi_change_pct, 2),
     }
+
 
 # =====================
 # Cron 저장 (선택)
