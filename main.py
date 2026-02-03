@@ -360,12 +360,19 @@ def get_watchlist_item(ticker: str):
     # 가격
     realtime = get_realtime_price(ticker)
 
-    price = (
-        realtime["pre"]
-        or realtime["post"]
-        or realtime["regular"]
-        or float(close.iloc[-1])
-    )
+    # 가격 + 출처 명확히 결정
+    if realtime["pre"] is not None:
+        price = realtime["pre"]
+        price_source = "PRE"
+    elif realtime["post"] is not None:
+        price = realtime["post"]
+        price_source = "POST"
+    elif realtime["regular"] is not None:
+        price = realtime["regular"]
+        price_source = "REGULAR"
+    else:
+        price = float(close.iloc[-1])
+        price_source = "CLOSE"
 
     prev_price = float(close.iloc[-2])
     price_change = price - prev_price
@@ -379,12 +386,14 @@ def get_watchlist_item(ticker: str):
     return {
         "ticker": ticker,
         "price": round(price, 2),
+        "price_source": price_source,  # ✅ 추가
         "price_change": round(price_change, 2),
         "price_change_pct": round(price_change_pct, 2),
         "rsi": round(rsi_today, 2),
         "rsi_change": round(rsi_change, 2),
         "rsi_change_pct": round(rsi_change_pct, 2)
     }
+
 # =====================
 # Cron 저장 (선택)
 # =====================
