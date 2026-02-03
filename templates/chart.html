@@ -284,7 +284,7 @@ authFetch(`/chart/${ticker}`)
       );
     });
 
-    latestPrice = res.current_price ?? prices.at(-1);
+    latestPrice = res.current_price ?? prices[prices.length - 1];
 
     const mainLine = document.getElementById("mainPriceLine");
     const subLine  = document.getElementById("subPriceLine");
