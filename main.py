@@ -212,7 +212,6 @@ def get_yf_daily_closes(ticker: str, period="6mo") -> list[float]:
 
     return close.astype(float).tolist()
 
-
 @app.post("/api/order/preview")
 def order_preview(
     data: dict,
@@ -453,8 +452,7 @@ def calculate_wilder_rsi_series(series: pd.Series, period: int = 14):
 
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
-    return rsi
-
+    return rsi    
 
 # =====================
 # Finviz RSI (Cron용)
@@ -525,6 +523,15 @@ def cron_save(secret: str = Query(...)):
             continue
     conn.commit()
     return {"saved": saved, "day": today}
+
+@app.post("/cron/execute-orders")
+def cron_execute_orders(secret: str = Query(...)):
+    if secret != os.getenv("CRON_SECRET"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    run_execute_orders()
+    return {"status": "ok"}
+
 # =====================
 # API
 # =====================
