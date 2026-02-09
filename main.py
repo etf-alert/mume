@@ -21,17 +21,11 @@ from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockLatestTradeRequest, StockSnapshotRequest
 from market_time import (is_us_market_open,is_us_premarket,is_us_postmarket,)
 
+# =====================
+# ENV
+# =====================
 SECRET_KEY = os.getenv("JWT_SECRET", "change-this")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
-ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
-ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
-
-alpaca_data = StockHistoricalDataClient(
-    api_key=ALPACA_API_KEY,
-    secret_key=ALPACA_SECRET_KEY
-)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
@@ -39,12 +33,23 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 
 if not SUPABASE_URL:
     raise RuntimeError("SUPABASE_URL not set")
+if not SUPABASE_SERVICE_KEY:
+    raise RuntimeError("SUPABASE_SERVICE_KEY not set")
+if not SUPABASE_ANON_KEY:
+    raise RuntimeError("SUPABASE_ANON_KEY not set")
+if SECRET_KEY == "change-this":
+    raise RuntimeError("JWT_SECRET not set")
 
+# =====================
+# Supabase clients
+# =====================
+# 🔥 서버/cron 전용 (service role)
 supabase_admin = create_client(
     SUPABASE_URL,
     SUPABASE_SERVICE_KEY
 )
 
+# 👤 사용자 요청용 (RLS 적용)
 def get_user_supabase(token: str):
     return create_client(
         SUPABASE_URL,
@@ -56,75 +61,39 @@ def get_user_supabase(token: str):
         }
     )
 
-@app.get("/api/queued-orders")
-def get_queued_orders(
-    request: Request,
-    user: str = Depends(get_current_user)
-):
-    token = request.cookies.get("access_token")
-    sb = get_user_supabase(token)
-
-    res = (
-        sb
-        .table("queued_orders")
-        .select("id, ticker, side, price, qty, execute_after")
-        .eq("status", "PENDING")
-        .execute()
-    )
-    
-sb.table("queued_orders").insert({
-    "id": order_id,
-    "ticker": ticker,
-    "side": side,
-    "price": price,
-    "qty": qty,
-    "execute_after": next_open.isoformat(),
-    "status": "PENDING",
-    "user_id": user_uuid,  # ⭐ 필수
-}).execute()
-
-if SECRET_KEY == "change-this":
-    raise RuntimeError("JWT_SECRET not set")
+# =====================
+# FastAPI
+# =====================
+app = FastAPI()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
-def require_login_page(request: Request):
-    token = request.cookies.get("access_token")
-
-    if not token:
-        return None
-
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload.get("sub")
-    except JWTError:
-        return None
-
+# =====================
+# Auth utils
+# =====================
 def create_access_token(data: dict):
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(minutes=30)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
-def get_market_phase(now=None):
-    if is_us_market_open(now):
-        return "REGULAR"
-    if is_us_premarket(now):
-        return "PRE"
-    if is_us_postmarket(now):
-        return "POST"
-    return "CLOSE"
+def get_current_user(token: str = Depends(oauth2_scheme)) -> str:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload["sub"]  # user_id (uuid string)
+    except JWTError:
+        raise HTTPException(status_code=401, detail="invalid token")
 
-app = FastAPI()
-ORDER_CACHE = {}
-
+# =====================
+# Auth API
+# =====================
 @app.post("/api/auth/login")
 def login(data: dict):
     user_id = data["id"]
     password = data["password"]
 
     if user_id != os.getenv("ADMIN_ID") or password != os.getenv("ADMIN_PW"):
-        raise HTTPException(401, "invalid credentials")
+        raise HTTPException(status_code=401, detail="invalid credentials")
 
     token = create_access_token({"sub": user_id})
 
@@ -139,13 +108,33 @@ def login(data: dict):
         samesite="lax"
     )
     return res
-    
-def get_current_user(token: str = Depends(oauth2_scheme)):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload["sub"]
-    except JWTError:
-        raise HTTPException(401, "invalid token")
+
+# =====================
+# Queued Orders (RLS 적용)
+# =====================
+@app.get("/api/queued-orders")
+def get_queued_orders(
+    request: Request,
+    user_id: str = Depends(get_current_user)
+):
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="no token")
+
+    sb = get_user_supabase(token)
+
+    res = (
+        sb
+        .table("queued_orders")
+        .select("id, ticker, side, price, qty, execute_after")
+        .eq("status", "PENDING")
+        .order("execute_after")
+        .execute()
+    )
+
+    return {
+        "orders": res.data or []
+    }
         
 def get_yahoo_quote(ticker: str) -> dict:
     """
