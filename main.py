@@ -33,39 +33,55 @@ alpaca_data = StockHistoricalDataClient(
     secret_key=ALPACA_SECRET_KEY
 )
 
-# 🔐 서버 전용 (cron / 백엔드 내부용)
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
+
+if not SUPABASE_URL:
+    raise RuntimeError("SUPABASE_URL not set")
+
 supabase_admin = create_client(
     SUPABASE_URL,
     SUPABASE_SERVICE_KEY
 )
 
-# 👤 유저 요청용 (RLS 적용)
-def get_user_supabase(access_token: str):
+def get_user_supabase(token: str):
     return create_client(
         SUPABASE_URL,
-        access_token
+        SUPABASE_ANON_KEY,
+        options={
+            "headers": {
+                "Authorization": f"Bearer {token}"
+            }
+        }
     )
-    
-def get_current_user_token(token: str = Depends(oauth2_scheme)):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return token
-    except JWTError:
-        raise HTTPException(401, "invalid token")
 
 @app.get("/api/queued-orders")
 def get_queued_orders(
-    token: str = Depends(get_current_user_token)
+    request: Request,
+    user: str = Depends(get_current_user)
 ):
-    supabase = get_user_supabase(token)
+    token = request.cookies.get("access_token")
+    sb = get_user_supabase(token)
 
     res = (
-        supabase
+        sb
         .table("queued_orders")
-        .select("*")
+        .select("id, ticker, side, price, qty, execute_after")
+        .eq("status", "PENDING")
         .execute()
     )
-    return res.data
+    
+sb.table("queued_orders").insert({
+    "id": order_id,
+    "ticker": ticker,
+    "side": side,
+    "price": price,
+    "qty": qty,
+    "execute_after": next_open.isoformat(),
+    "status": "PENDING",
+    "user_id": user_uuid,  # ⭐ 필수
+}).execute()
 
 if SECRET_KEY == "change-this":
     raise RuntimeError("JWT_SECRET not set")
