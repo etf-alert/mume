@@ -115,10 +115,10 @@ def login(data: dict):
     if user_id != os.getenv("ADMIN_ID") or password != os.getenv("ADMIN_PW"):
         raise HTTPException(status_code=401, detail="invalid credentials")
 
-    supabase_user_id = os.getenv("ADMIN_SUPABASE_USER_ID")
+    supabase_user_id = os.getenv("ADMIN_USER_UUID")  # ✅ UUID
 
     token = create_access_token({
-        "sub": supabase_user_id  # ⭐ UUID 넣기
+        "sub": supabase_user_id   # ⭐ UUID 들어가야 함
     })
 
     res = JSONResponse({
