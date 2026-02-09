@@ -417,17 +417,10 @@ async function loadData() {
   </div>
 
   ${
-    item.price_source !== "REGULAR" && item.display_price !== null
+    item.price_source === "CLOSE"
       ? `
         <div class="price-after">
-          <span class="badge ${item.price_source.toLowerCase()}">
-            ${item.price_source}
-          </span>
-          ${item.display_price}
-        </div>
-        <div class="change ${item.after_change < 0 ? 'down' : 'up'}">
-          (${item.after_change > 0 ? '+' : ''}${item.after_change},
-           ${item.after_change_pct > 0 ? '+' : ''}${item.after_change_pct}%)
+          <span class="badge close">CLOSE</span>
         </div>
       `
       : ``
