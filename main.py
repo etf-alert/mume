@@ -477,16 +477,11 @@ def get_finviz_rsi(ticker: str):
 
 # =====================
 # Watchlist 화면용
-# =====================    
+# =====================  
+
 def get_rsi_from_history(ticker: str):
     """
-    Finviz RSI 기준 (rsi_history 테이블)
-    returns:
-    {
-      rsi: float | None,
-      rsi_change: float | None,
-      rsi_change_pct: float | None
-    }
+    rsi_history 테이블 기준 (전일 대비 계산용)
     """
     res = (
         supabase_admin
@@ -494,42 +489,46 @@ def get_rsi_from_history(ticker: str):
         .select("day, rsi")
         .eq("ticker", ticker)
         .order("day", desc=True)
-        .limit(2)
+        .limit(1)
         .execute()
     )
 
     rows = res.data or []
-    if len(rows) == 0:
-        return {
-            "rsi": None,
-            "rsi_change": None,
-            "rsi_change_pct": None,
-            "rsi_valid": False
-        }
+    if not rows:
+        return None
 
-    today = float(rows[0]["rsi"])
+    return float(rows[0]["rsi"])
 
-    if len(rows) == 1:
-        return {
-            "rsi": round(today, 2),
-            "rsi_change": 0.0,
-            "rsi_change_pct": 0.0
-        }
-
-    prev = float(rows[1]["rsi"])
-    change = today - prev
-    change_pct = (change / prev) * 100 if prev != 0 else 0.0
-
-    return {
-        "rsi": round(today, 2),
-        "rsi_change": round(change, 2),
-        "rsi_change_pct": round(change_pct, 2)
-    }
 
 def get_watchlist_item(ticker: str):
+    # =====================
+    # 가격
+    # =====================
     p = resolve_prices(ticker)
 
-    rsi_data = get_rsi_from_history(ticker)
+    # =====================
+    # 🔥 Finviz 실시간 RSI
+    # =====================
+    try:
+        realtime_rsi, _ = get_finviz_rsi(ticker)
+        realtime_rsi = round(float(realtime_rsi), 2)
+    except Exception as e:
+        print("Finviz RSI error:", ticker, e)
+        realtime_rsi = None
+
+    # =====================
+    # 📉 전일 RSI (DB)
+    # =====================
+    prev_rsi = get_rsi_from_history(ticker)
+
+    if realtime_rsi is not None and prev_rsi is not None:
+        rsi_change = round(realtime_rsi - prev_rsi, 2)
+        rsi_change_pct = round(
+            (rsi_change / prev_rsi) * 100, 2
+        ) if prev_rsi != 0 else 0.0
+    else:
+        rsi_change = None
+        rsi_change_pct = None
 
     item = {
         "ticker": ticker,
@@ -543,10 +542,10 @@ def get_watchlist_item(ticker: str):
         "after_change_pct": p["after_change_pct"],
         "price_source": p["price_source"],
 
-        # 📊 RSI (Finviz)
-        "rsi": rsi_data["rsi"],
-        "rsi_change": rsi_data["rsi_change"],
-        "rsi_change_pct": rsi_data["rsi_change_pct"],
+        # 📊 RSI (Finviz 실시간)
+        "rsi": realtime_rsi,
+        "rsi_change": rsi_change,
+        "rsi_change_pct": rsi_change_pct,
     }
 
     print("WATCHLIST ITEM DEBUG:", item)
