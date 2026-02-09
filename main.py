@@ -624,27 +624,16 @@ def cron_execute_orders(secret: str = Query(...)):
 # Queued Orders (사용자 / RLS 적용)
 # =====================
 @app.get("/api/queued-orders")
-def get_queued_orders(
-    request: Request,
-    user: str = Depends(get_current_user)
-):
-    # ✅ 헤더 → 쿠키 fallback
-    token = request.cookies.get("access_token")
-    if not token:
-        raise HTTPException(401, "No token")
-
-    sb = get_user_supabase(token)
-
+def get_queued_orders(user: str = Depends(get_current_user)):
     res = (
-        sb
+        supabase_admin
         .table("queued_orders")
         .select("id, ticker, side, price, qty, execute_after")
         .eq("status", "PENDING")
         .eq("user_id", user)
-        .order("execute_after", desc=False)
+        .order("execute_after")
         .execute()
     )
-
     KST = timezone(timedelta(hours=9))
     orders = []
 
