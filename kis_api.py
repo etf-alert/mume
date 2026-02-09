@@ -87,14 +87,17 @@ def get_overseas_avg_price(ticker: str):
 
     for item in data.get("output1", []):
         if item.get("ovrs_pdno") == ticker.upper():
-            qty = float(item.get("sell_psbl_qty", 0))
+            qty = float(item.get("ovrs_cblc_qty", 0))       # 보유 수량
+            sellable = float(item.get("sell_psbl_qty", 0)) # 매도 가능 수량0))
+            
             if qty <= 0:
                 continue
 
             return {
                 "found": True,
                 "avg_price": float(item.get("pchs_avg_pric", 0)),
-                "qty": int(qty),
+                "qty": int(qty),                 # ← 차트/보유 표시용
+                "sellable_qty": int(sellable),   # ← 매도 판단용
                 "total_cost": float(item.get("pchs_amt", 0)),  # ✅ KIS가 준 총 매수액
                 "excg": item.get("ovrs_excg_cd")
             }
@@ -104,6 +107,7 @@ def get_overseas_avg_price(ticker: str):
         "found": False,
         "avg_price": 0,
         "qty": 0,
+        "sellable_qty": 0,
         "total_cost": 0,
         "excg": None
     }
@@ -183,12 +187,12 @@ def order_overseas_stock(
 def sell_all_overseas_stock(ticker: str, price: float):
     info = get_overseas_avg_price(ticker)
 
-    if not info["found"] or info["qty"] <= 0:
+    if not info["found"] or info["sellable_qty"] <= 0:
         return {"error": "매도 가능 수량 없음"}
 
     return order_overseas_stock(
         ticker=ticker,
         price=price,
-        qty=info["qty"],
+        qty=info["sellable_qty"],
         side="sell"
     )
