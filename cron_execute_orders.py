@@ -1,6 +1,6 @@
 # cron_execute_orders.py
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from kis_api import order_overseas_stock
 
 DB_FILE = "rsi_history.db"
@@ -10,20 +10,24 @@ def run():
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc)
 
     rows = cur.execute("""
         SELECT *
         FROM queued_orders
-        WHERE execute_after <= ?
-          AND status = 'PENDING'
-        ORDER BY created_at ASC
-    """, (now,)).fetchall()
+        WHERE status = 'PENDING'
+    """).fetchall()
 
-    print(f"▶ queued orders: {len(rows)}")
-
+    ready = []
     for o in rows:
-        # 🔒 실행 락 시도
+        execute_after = datetime.fromisoformat(o["execute_after"])
+        if execute_after <= now:
+            ready.append(o)
+
+    print(f"▶ ready orders: {len(ready)}")
+
+    for o in ready:
+        # 🔒 실행 락
         cur.execute("""
             UPDATE queued_orders
             SET status = 'RUNNING'
@@ -31,7 +35,6 @@ def run():
         """, (o["id"],))
         conn.commit()
 
-        # ❗ 이미 다른 프로세스가 가져감
         if cur.rowcount == 0:
             continue
 
@@ -43,7 +46,6 @@ def run():
                 o["qty"],
                 o["price"]
             )
-
             order_overseas_stock(
                 ticker=o["ticker"],
                 price=o["price"],
@@ -51,7 +53,6 @@ def run():
                 side="buy" if o["side"].startswith("BUY") else "sell"
             )
 
-            # ✅ 성공 → 삭제
             cur.execute(
                 "DELETE FROM queued_orders WHERE id = ?",
                 (o["id"],)
@@ -60,7 +61,6 @@ def run():
             print("✅ done:", o["id"])
 
         except Exception as e:
-            # ❗ 실패 → 다시 대기
             cur.execute("""
                 UPDATE queued_orders
                 SET status = 'PENDING'
