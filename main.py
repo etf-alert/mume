@@ -629,16 +629,11 @@ def get_queued_orders(
     user: str = Depends(get_current_user)
 ):
     # ✅ 헤더 → 쿠키 fallback
-    token = request.headers.get("authorization")
-    if token and token.startswith("Bearer "):
-        token = token.replace("Bearer ", "")
-    else:
-        token = request.cookies.get("access_token")
-
+    token = request.cookies.get("access_token")
     if not token:
         raise HTTPException(401, "No token")
 
-    sb = get_user_supabase(token)  # ✅ RLS 적용 client
+    sb = get_user_supabase(token)
 
     res = (
         sb
