@@ -6,6 +6,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
 import requests
+import time
 from pydantic import BaseModel
 from bs4 import BeautifulSoup
 from supabase import create_client
@@ -406,23 +407,21 @@ def save_watchlist(data):
     with open(WATCHLIST_FILE, "w") as f:
         json.dump(data, f)
 WATCHLIST = load_watchlist()
+
 # =====================
 # RSI (wilder)
 # =====================
 def calculate_wilder_rsi_series(series: pd.Series, period: int = 14):
     delta = series.diff()
-
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
-
     # Wilder smoothing (EMA with alpha = 1/period)
     avg_gain = gain.ewm(alpha=1/period, adjust=False).mean()
     avg_loss = loss.ewm(alpha=1/period, adjust=False).mean()
-
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
     return rsi    
-
+    
 # =====================
 # Finviz RSI (Cron용)
 # =====================
@@ -441,18 +440,64 @@ def get_finviz_rsi(ticker: str):
 
 # =====================
 # Watchlist 화면용
-# =====================
+# =====================    
+def get_rsi_from_history(ticker: str):
+    """
+    Finviz RSI 기준 (rsi_history 테이블)
+    returns:
+    {
+      rsi: float | None,
+      rsi_change: float | None,
+      rsi_change_pct: float | None
+    }
+    """
+    res = (
+        supabase
+        .table("rsi_history")
+        .select("day, rsi")
+        .eq("ticker", ticker)
+        .order("day", desc=True)
+        .limit(2)
+        .execute()
+    )
+
+    rows = res.data or []
+    if len(rows) == 0:
+        return {
+            "rsi": None,
+            "rsi_change": None,
+            "rsi_change_pct": None,
+            "rsi_valid": False
+        }
+
+    today = float(rows[0]["rsi"])
+
+    if len(rows) == 1:
+        return {
+            "rsi": round(today, 2),
+            "rsi_change": 0.0,
+            "rsi_change_pct": 0.0
+        }
+
+    prev = float(rows[1]["rsi"])
+    change = today - prev
+    change_pct = (change / prev) * 100 if prev != 0 else 0.0
+
+    return {
+        "rsi": round(today, 2),
+        "rsi_change": round(change, 2),
+        "rsi_change_pct": round(change_pct, 2)
+    }
+
 def get_watchlist_item(ticker: str):
     p = resolve_prices(ticker)
 
-    closes = get_yf_daily_closes(ticker, period="6mo")
-    rsi_series = calculate_wilder_rsi_series(pd.Series(closes))
-
-    rsi_today = float(rsi_series.iloc[-1])
-    rsi_prev = float(rsi_series.iloc[-2])
+    rsi_data = get_rsi_from_history(ticker)
 
     item = {
         "ticker": ticker,
+
+        # 💰 가격
         "current_price": p["base_price"],
         "current_change": p["current_change"],
         "current_change_pct": p["current_change_pct"],
@@ -460,10 +505,11 @@ def get_watchlist_item(ticker: str):
         "after_change": p["after_change"],
         "after_change_pct": p["after_change_pct"],
         "price_source": p["price_source"],
-        "rsi": round(rsi_today, 2),
-        "rsi_change": round(rsi_today - rsi_prev, 2),
-        "rsi_change_pct": round((rsi_today - rsi_prev) / rsi_prev * 100, 2)
-        if rsi_prev != 0 else 0.0,
+
+        # 📊 RSI (Finviz)
+        "rsi": rsi_data["rsi"],
+        "rsi_change": rsi_data["rsi_change"],
+        "rsi_change_pct": rsi_data["rsi_change_pct"],
     }
 
     print("WATCHLIST ITEM DEBUG:", item)
@@ -491,6 +537,7 @@ def cron_save(secret: str = Query(...)):
                 "rsi": float(rsi),
                 "price": round(float(price), 2),
             })
+            time.sleep(1.2)
         except Exception as e:
             print("cron_save error:", t, e)
             continue
@@ -506,20 +553,22 @@ def cron_save(secret: str = Query(...)):
         "day": today
     }
 
-@app.post("/cron/execute-orders")
-def cron_execute_orders(secret: str = Query(...)):
-    if secret != os.getenv("CRON_SECRET"):
-        raise HTTPException(status_code=403, detail="Forbidden")
-
-    def run_execute_orders():
+now_utc = datetime.now(timezone.utc).isoformat()
+    
+def run_execute_orders():
         res = (
             supabase
             .table("queued_orders")
             .select("*")
             .eq("status", "PENDING")
-            .lte("execute_after", datetime.utcnow().isoformat())
+            .lte("execute_after", now_utc)
             .execute()
         )
+
+@app.post("/cron/execute-orders")
+def cron_execute_orders(secret: str = Query(...)):
+    if secret != os.getenv("CRON_SECRET"):
+        raise HTTPException(status_code=403, detail="Forbidden")
 
         for o in res.data or []:
             try:
@@ -645,7 +694,7 @@ def watchlist():
         result.append(get_watchlist_item(t))
 
     # ✅ RSI 오름차순 정렬 (낮은 RSI → 높은 RSI)
-    result.sort(key=lambda x: x["rsi"])
+    result.sort(key=lambda x: x["rsi"] if x["rsi"] is not None else 999)
 
     return {
         "market_open": is_open,
