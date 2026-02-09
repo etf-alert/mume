@@ -9,7 +9,7 @@ import requests
 import time
 from pydantic import BaseModel
 from bs4 import BeautifulSoup
-from supabase import create_client
+from supabase import create_client, ClientOptions
 import json
 import os
 import yfinance as yf
@@ -55,11 +55,11 @@ def get_user_supabase(token: str):
     return create_client(
         SUPABASE_URL,
         SUPABASE_ANON_KEY,
-        options={
-            "headers": {
+        options=ClientOptions(
+            headers={
                 "Authorization": f"Bearer {token}"
             }
-        }
+        )
     )
 
 # =====================
