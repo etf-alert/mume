@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone, UTC
 from fastapi import FastAPI, HTTPException, Query, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -97,6 +97,8 @@ def require_login_page(request: Request):
         return payload.get("sub")
     except JWTError:
         return None
+        
+ORDER_CACHE: dict[str, dict] = {}
 
 # =====================
 # Auth API
@@ -316,7 +318,7 @@ def order_preview(
             "ticker": ticker,
             "price_type": price_type,
             "message": message,
-            "created_at": datetime.utcnow()
+            "created_at": datetime.now(UTC)
         }
 
         if len(ORDER_CACHE) > 1000:
@@ -350,7 +352,7 @@ def execute_order(
         raise HTTPException(404, "order not found")
 
     # ⏰ 만료 체크
-    if datetime.utcnow() - order["created_at"] > timedelta(minutes=5):
+    if datetime.now(UTC) - order["created_at"] > timedelta(minutes=5):
         ORDER_CACHE.pop(order_id, None)
         raise HTTPException(400, "order expired")
 
@@ -622,8 +624,15 @@ def get_queued_orders(
     request: Request,
     user: str = Depends(get_current_user)
 ):
-    # 🔑 access_token(JWT)을 그대로 Supabase에 전달
-    token = request.headers.get("authorization", "").replace("Bearer ", "")
+    # ✅ 헤더 → 쿠키 fallback
+    token = request.headers.get("authorization")
+    if token and token.startswith("Bearer "):
+        token = token.replace("Bearer ", "")
+    else:
+        token = request.cookies.get("access_token")
+
+    if not token:
+        raise HTTPException(401, "No token")
 
     sb = get_user_supabase(token)  # ✅ RLS 적용 client
 
