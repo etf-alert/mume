@@ -53,7 +53,7 @@ def is_us_market_open(now=None):
     open_time = schedule.iloc[0]["market_open"].to_pydatetime()
     close_time = schedule.iloc[0]["market_close"].to_pydatetime()
 
-    return open_time <= now <= close_time
+    return open_time <= now < close_time
 
 
 def next_market_open():
