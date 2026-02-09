@@ -68,7 +68,6 @@ def get_access_token():
 def get_overseas_avg_price(ticker: str):
     token = get_access_token()
     url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/inquire-balance"
-
     headers = {
         "authorization": f"Bearer {token}",
         "appkey": APP_KEY,
@@ -86,27 +85,31 @@ def get_overseas_avg_price(ticker: str):
     res.raise_for_status()
     data = res.json()
 
-    # 🔍 디버그 (처음 한 번은 꼭 찍어봐)
-    print("KIS BALANCE RAW:", data.get("output1"))
+    items = data.get("output2") or []
+
+    # 🔍 디버그 (처음엔 꼭 확인)
+    print("KIS RAW:", data)
+    print("KIS OUTPUT2:", items)
 
     target = ticker.upper()
 
-    for item in data.get("output1", []):
-        ovrs_pdno = item.get("ovrs_pdno", "").upper().strip()
+    for item in items:
+        ovrs_pdno = item.get("ovrs_pdno", "").upper()
+        qty = float(item.get("ovrs_cblc_qty", 0))
+        sellable = float(item.get("sell_psbl_qty", 0))
 
-        qty = int(float(item.get("ovrs_cblc_qty", 0)))        # 보유 수량
-        sellable = int(float(item.get("sell_psbl_qty", 0)))  # 매도 가능 수량
+        if qty <= 0:
+            continue
 
-        # ✅ 수량 우선 + ticker 유연 매칭
-        if qty > 0 and (ovrs_pdno == target or ovrs_pdno.startswith(target)):
+        # ✅ 정확 매칭
+        if ovrs_pdno == target:
             return {
                 "found": True,
                 "avg_price": float(item.get("pchs_avg_pric", 0)),
-                "qty": qty,
-                "sellable_qty": sellable,
+                "qty": int(qty),
+                "sellable_qty": int(sellable),
                 "total_cost": float(item.get("pchs_amt", 0)),
                 "excg": item.get("ovrs_excg_cd"),
-                "raw_ticker": ovrs_pdno   # 👈 문제 생기면 이거 보면 됨
             }
 
     return {
@@ -117,8 +120,6 @@ def get_overseas_avg_price(ticker: str):
         "total_cost": 0,
         "excg": None
     }
-
-
 
 # =====================
 # 해외주식 주문
