@@ -336,14 +336,14 @@ def execute_order(
     # 🌙 장 닫힘 → Supabase 큐잉
     # ==========================
     if not is_open:
-        supabase.table("queued_orders").insert({
+        supabase.table("queued_orders").upsert({
             "id": order_id,
             "ticker": order["ticker"],
             "side": order["side"],
             "price": order["price"],
             "qty": order["qty"],
             "created_at": datetime.utcnow().isoformat(),
-            "execute_after": next_open.isoformat(),
+            "execute_after": next_open.astimezone(timezone.utc).isoformat(),
             "status": "PENDING"
         }).execute()
 
@@ -474,29 +474,71 @@ def get_watchlist_item(ticker: str):
 # =====================
 @app.post("/cron/save")
 def cron_save(secret: str = Query(...)):
-    if secret != "MY_SECRET_KEY":
+    if secret != os.getenv("CRON_SECRET"):
         raise HTTPException(status_code=403, detail="Forbidden")
+
     today = date.today().isoformat()
-    saved = []
+    rows = []
+
     for t in WATCHLIST:
         try:
             rsi, _ = get_finviz_rsi(t)
             price = yf.Ticker(t).fast_info["last_price"]
-            cur.execute(
-                """
-                INSERT OR REPLACE INTO rsi_history (ticker, day, rsi, price)
-                VALUES (?, ?, ?, ?)
-                """, (t, today, rsi, round(price, 2)))
-            saved.append(t)
-        except Exception:
+
+            rows.append({
+                "ticker": t,
+                "day": today,
+                "rsi": float(rsi),
+                "price": round(float(price), 2),
+            })
+        except Exception as e:
+            print("cron_save error:", t, e)
             continue
-    conn.commit()
-    return {"saved": saved, "day": today}
+
+    if rows:
+        supabase.table("rsi_history").upsert(
+            rows,
+            on_conflict="ticker,day"
+        ).execute()
+
+    return {
+        "saved": [r["ticker"] for r in rows],
+        "day": today
+    }
 
 @app.post("/cron/execute-orders")
 def cron_execute_orders(secret: str = Query(...)):
     if secret != os.getenv("CRON_SECRET"):
         raise HTTPException(status_code=403, detail="Forbidden")
+
+    def run_execute_orders():
+        res = (
+            supabase
+            .table("queued_orders")
+            .select("*")
+            .eq("status", "PENDING")
+            .lte("execute_after", datetime.utcnow().isoformat())
+            .execute()
+        )
+
+        for o in res.data or []:
+            try:
+                side = "buy" if o["side"].startswith("BUY") else "sell"
+                result = order_overseas_stock(
+                    ticker=o["ticker"],
+                    price=o["price"],
+                    qty=o["qty"],
+                    side=side
+                )
+                supabase.table("queued_orders").update({
+                    "status": "DONE",
+                    "executed_at": datetime.utcnow().isoformat()
+                }).eq("id", o["id"]).execute()
+            except Exception as e:
+                supabase.table("queued_orders").update({
+                    "status": "ERROR",
+                    "error": str(e)
+                }).eq("id", o["id"]).execute()
 
     run_execute_orders()
     return {"status": "ok"}
