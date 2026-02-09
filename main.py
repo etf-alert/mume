@@ -376,15 +376,15 @@ def execute_order(
     # 🌙 장 닫힘 → Supabase 큐잉
     # ==========================
     if not is_open:
-        supabase.table("queued_orders").upsert({
+        supabase_admin.table("queued_orders").insert({
             "id": order_id,
             "ticker": order["ticker"],
             "side": order["side"],
             "price": order["price"],
             "qty": order["qty"],
-            "created_at": datetime.utcnow().isoformat(),
             "execute_after": next_open.astimezone(timezone.utc).isoformat(),
-            "status": "PENDING"
+            "status": "PENDING",
+            "user_id": user_uuid,   # ⭐ 필수
         }).execute()
 
         ORDER_CACHE.pop(order_id, None)
@@ -607,11 +607,10 @@ def run_execute_orders():
 @app.post("/cron/execute-orders")
 def cron_execute_orders(secret: str = Query(...)):
     if secret != os.getenv("CRON_SECRET"):
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise HTTPException(403)
 
-    # 1️⃣ 실행 대상 조회
     res = (
-        supabase
+        supabase_admin
         .table("queued_orders")
         .select("*")
         .eq("status", "PENDING")
@@ -619,27 +618,15 @@ def cron_execute_orders(secret: str = Query(...)):
         .execute()
     )
 
-    # 2️⃣ 주문 실행
     for o in res.data or []:
         try:
-            side = "buy" if o["side"].startswith("BUY") else "sell"
-
-            result = order_overseas_stock(
-                ticker=o["ticker"],
-                price=o["price"],
-                qty=o["qty"],
-                side=side
-            )
-
-            # 3️⃣ 성공 → DONE
-            supabase.table("queued_orders").update({
+            ...
+            supabase_admin.table("queued_orders").update({
                 "status": "DONE",
                 "executed_at": datetime.utcnow().isoformat()
             }).eq("id", o["id"]).execute()
-
         except Exception as e:
-            # 4️⃣ 실패 → ERROR
-            supabase.table("queued_orders").update({
+            supabase_admin.table("queued_orders").update({
                 "status": "ERROR",
                 "error": str(e)
             }).eq("id", o["id"]).execute()
@@ -668,17 +655,23 @@ def home(request: Request):
     )
     
 @app.get("/api/queued-orders")
-def get_queued_orders(user: str = Depends(get_current_user)):
+def get_queued_orders(
+    request: Request,
+    user: str = Depends(get_current_user)
+):
+    token = request.cookies.get("access_token")
+    sb = get_user_supabase(token)
+
     res = (
-        supabase
+        sb
         .table("queued_orders")
         .select("id, ticker, side, price, qty, execute_after")
         .eq("status", "PENDING")
         .order("execute_after", desc=False)
         .execute()
     )
+    return {"orders": res.data or []}
 
-    rows = res.data or []
 
     KST = timezone(timedelta(hours=9))
     orders = []
