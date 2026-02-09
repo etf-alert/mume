@@ -105,7 +105,7 @@ def require_login_page(request: Request):
 # =====================
 @app.get("/")
 def root():
-    return "OK"
+    return RedirectResponse("/app")
 
 @app.post("/api/auth/login")
 def login(data: dict):
