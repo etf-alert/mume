@@ -67,10 +67,9 @@ def get_access_token():
 # =====================
 def get_overseas_avg_price(ticker: str):
     token = get_access_token()
+    excg_cd = get_kis_exchange_code(ticker)
+
     url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/inquire-balance"
-
-    excg_cd = get_kis_exchange_code(ticker)   # 🔥 추가
-
     headers = {
         "authorization": f"Bearer {token}",
         "appkey": APP_KEY,
@@ -83,25 +82,25 @@ def get_overseas_avg_price(ticker: str):
         "CANO": CANO,
         "ACNT_PRDT_CD": ACNT,
         "TR_CRCY_CD": "USD",
-        "OVRS_EXCG_CD": excg_cd,     # 🔥 핵심
-        "CTX_AREA_FK200": "",   # 🔥 필수
-        "CTX_AREA_NK200": ""    # 🔥 필수
+        "OVRS_EXCG_CD": excg_cd,
+        "CTX_AREA_FK200": "",
+        "CTX_AREA_NK200": ""
     }
 
     res = requests.get(url, headers=headers, params=params)
     res.raise_for_status()
     data = res.json()
 
-    # 🔍 디버그
     print("KIS RAW:", data)
 
-    items = data.get("output2") or []
+    # ✅ 종목별 보유 내역은 output1
+    items = data.get("output1") or []
     target = ticker.upper()
 
     for item in items:
         ovrs_pdno = item.get("ovrs_pdno", "").upper()
         qty = float(item.get("ovrs_cblc_qty", 0))
-        sellable = float(item.get("sell_psbl_qty", 0))
+        sellable = float(item.get("ord_psbl_qty", 0))  # ← 이 필드가 맞음
 
         if qty <= 0:
             continue
@@ -112,8 +111,8 @@ def get_overseas_avg_price(ticker: str):
                 "avg_price": float(item.get("pchs_avg_pric", 0)),
                 "qty": int(qty),
                 "sellable_qty": int(sellable),
-                "total_cost": float(item.get("pchs_amt", 0)),
-                "excg": excg_cd
+                "total_cost": float(item.get("frcr_pchs_amt1", 0)),
+                "excg": item.get("ovrs_excg_cd"),
             }
 
     return {
