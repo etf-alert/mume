@@ -68,6 +68,7 @@ def get_access_token():
 def get_overseas_avg_price(ticker: str):
     token = get_access_token()
     url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/inquire-balance"
+
     headers = {
         "authorization": f"Bearer {token}",
         "appkey": APP_KEY,
@@ -85,24 +86,29 @@ def get_overseas_avg_price(ticker: str):
     res.raise_for_status()
     data = res.json()
 
-    for item in data.get("output1", []):
-        if item.get("ovrs_pdno") == ticker.upper():
-            qty = float(item.get("ovrs_cblc_qty", 0))       # 보유 수량
-            sellable = float(item.get("sell_psbl_qty", 0)) # 매도 가능 수량0))
-            
-            if qty <= 0:
-                continue
+    # 🔍 디버그 (처음 한 번은 꼭 찍어봐)
+    print("KIS BALANCE RAW:", data.get("output1"))
 
+    target = ticker.upper()
+
+    for item in data.get("output1", []):
+        ovrs_pdno = item.get("ovrs_pdno", "").upper().strip()
+
+        qty = int(float(item.get("ovrs_cblc_qty", 0)))        # 보유 수량
+        sellable = int(float(item.get("sell_psbl_qty", 0)))  # 매도 가능 수량
+
+        # ✅ 수량 우선 + ticker 유연 매칭
+        if qty > 0 and (ovrs_pdno == target or ovrs_pdno.startswith(target)):
             return {
                 "found": True,
                 "avg_price": float(item.get("pchs_avg_pric", 0)),
-                "qty": int(qty),                 # ← 차트/보유 표시용
-                "sellable_qty": int(sellable),   # ← 매도 판단용
-                "total_cost": float(item.get("pchs_amt", 0)),  # ✅ KIS가 준 총 매수액
-                "excg": item.get("ovrs_excg_cd")
+                "qty": qty,
+                "sellable_qty": sellable,
+                "total_cost": float(item.get("pchs_amt", 0)),
+                "excg": item.get("ovrs_excg_cd"),
+                "raw_ticker": ovrs_pdno   # 👈 문제 생기면 이거 보면 됨
             }
 
-    # ❗ 구조 통일 (프론트 안전)
     return {
         "found": False,
         "avg_price": 0,
@@ -111,6 +117,7 @@ def get_overseas_avg_price(ticker: str):
         "total_cost": 0,
         "excg": None
     }
+
 
 
 # =====================
