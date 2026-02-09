@@ -67,6 +67,9 @@ def get_user_supabase(token: str):
 # =====================
 app = FastAPI()
 
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 # =====================
@@ -123,61 +126,6 @@ def login(data: dict):
         samesite="lax"
     )
     return res
-
-# =====================
-# Queued Orders (RLS 적용)
-# =====================
-@app.get("/api/queued-orders")
-def get_queued_orders(
-    request: Request,
-    user: str = Depends(get_current_user)
-):
-    # 🔑 Authorization 헤더에서 JWT 추출
-    auth = request.headers.get("authorization")
-    if not auth or not auth.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="No token")
-
-    token = auth.replace("Bearer ", "")
-
-    # 👤 RLS 적용 Supabase client
-    sb = create_client(
-        SUPABASE_URL,
-        SUPABASE_ANON_KEY,
-        options={
-            "headers": {
-                "Authorization": f"Bearer {token}"
-            }
-        }
-    )
-
-    res = (
-        sb
-        .table("queued_orders")
-        .select("id, ticker, side, price, qty, execute_after")
-        .eq("status", "PENDING")
-        .order("execute_after", desc=False)
-        .execute()
-    )
-
-    rows = res.data or []
-    KST = timezone(timedelta(hours=9))
-
-    orders = []
-    for r in rows:
-        execute_dt = datetime.fromisoformat(
-            r["execute_after"].replace("Z", "+00:00")
-        )
-        orders.append({
-            "id": r["id"],
-            "ticker": r["ticker"],
-            "side": r["side"],
-            "price": float(r["price"]),
-            "qty": int(r["qty"]),
-            "execute_after": execute_dt.astimezone(KST).strftime("%Y-%m-%d %H:%M (KST)")
-        })
-
-    return {"orders": orders}
-
      
 def get_yahoo_quote(ticker: str) -> dict:
     """
@@ -667,15 +615,17 @@ def cron_execute_orders(secret: str = Query(...)):
 
 
 # =====================
-# Queued Orders (사용자)
+# Queued Orders (사용자 / RLS 적용)
 # =====================
 @app.get("/api/queued-orders")
 def get_queued_orders(
     request: Request,
     user: str = Depends(get_current_user)
 ):
+    # 🔑 access_token(JWT)을 그대로 Supabase에 전달
     token = request.headers.get("authorization", "").replace("Bearer ", "")
-    sb = get_user_supabase(token)
+
+    sb = get_user_supabase(token)  # ✅ RLS 적용 client
 
     res = (
         sb
@@ -702,14 +652,17 @@ def get_queued_orders(
 
     return {"orders": orders}
 
-
 @app.delete("/api/queued-orders/{order_id}")
 def delete_queued_order(
     order_id: str,
+    request: Request,
     user: str = Depends(get_current_user)
 ):
+    token = request.headers.get("authorization", "").replace("Bearer ", "")
+    sb = get_user_supabase(token)   # ✅ 사용자 client
+
     res = (
-        supabase_admin
+        sb
         .table("queued_orders")
         .delete()
         .eq("id", order_id)
@@ -721,6 +674,9 @@ def delete_queued_order(
 
     return {"deleted": order_id}
 
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
 
 # =====================
 # Watchlist
