@@ -83,6 +83,16 @@ def get_current_user(token: str = Depends(oauth2_scheme)) -> str:
         return payload["sub"]  # user_id (uuid string)
     except JWTError:
         raise HTTPException(status_code=401, detail="invalid token")
+        
+def require_login_page(request: Request):
+    token = request.cookies.get("access_token")
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload.get("sub")
+    except JWTError:
+        return None
 
 # =====================
 # Auth API
