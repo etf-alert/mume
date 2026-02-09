@@ -67,6 +67,8 @@ def get_user_supabase(token: str):
 # =====================
 app = FastAPI()
 
+ORDER_CACHE: dict[str, dict] = {}
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
@@ -97,8 +99,6 @@ def require_login_page(request: Request):
         return payload.get("sub")
     except JWTError:
         return None
-        
-ORDER_CACHE: dict[str, dict] = {}
 
 # =====================
 # Auth API
@@ -641,6 +641,7 @@ def get_queued_orders(
         .table("queued_orders")
         .select("id, ticker, side, price, qty, execute_after")
         .eq("status", "PENDING")
+        .eq("user_id", user)
         .order("execute_after", desc=False)
         .execute()
     )
