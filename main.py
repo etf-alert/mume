@@ -241,6 +241,18 @@ def get_realtime_price(ticker: str) -> dict:
         "pre": pre,
         "post": post,
     }
+    
+def get_market_phase(now=None):
+    """
+    Returns: REGULAR | PRE | POST | CLOSE
+    """
+    if is_us_market_open(now):
+        return "REGULAR"
+    if is_us_premarket(now):
+        return "PRE"
+    if is_us_postmarket(now):
+        return "POST"
+    return "CLOSE"
 
 def resolve_prices(ticker: str):
     closes = get_yf_daily_closes(ticker, period="5d")
