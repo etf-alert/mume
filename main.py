@@ -43,7 +43,8 @@ if SECRET_KEY == "change-this":
 # =====================
 # Supabase clients
 # =====================
-# 🔥 서버/cron 전용 (service role)
+
+# 🔥 서버 / cron 전용 (service role, RLS 무시)
 supabase_admin = create_client(
     SUPABASE_URL,
     SUPABASE_SERVICE_KEY
@@ -530,7 +531,7 @@ def get_rsi_from_history(ticker: str):
     }
     """
     res = (
-        supabase
+        supabase_admin
         .table("rsi_history")
         .select("day, rsi")
         .eq("ticker", ticker)
@@ -594,7 +595,7 @@ def get_watchlist_item(ticker: str):
     return item
 
 # =====================
-# Cron 저장 (선택)
+# Cron 저장
 # =====================
 @app.post("/cron/save")
 def cron_save(secret: str = Query(...)):
@@ -608,7 +609,6 @@ def cron_save(secret: str = Query(...)):
         try:
             rsi, _ = get_finviz_rsi(t)
             price = yf.Ticker(t).fast_info["last_price"]
-
             rows.append({
                 "ticker": t,
                 "day": today,
@@ -618,31 +618,19 @@ def cron_save(secret: str = Query(...)):
             time.sleep(1.2)
         except Exception as e:
             print("cron_save error:", t, e)
-            continue
 
     if rows:
-        supabase.table("rsi_history").upsert(
+        supabase_admin.table("rsi_history").upsert(
             rows,
             on_conflict="ticker,day"
         ).execute()
 
-    return {
-        "saved": [r["ticker"] for r in rows],
-        "day": today
-    }
+    return {"saved": [r["ticker"] for r in rows], "day": today}
 
-now_utc = datetime.now(timezone.utc).isoformat()
-    
-def run_execute_orders():
-        res = (
-            supabase
-            .table("queued_orders")
-            .select("*")
-            .eq("status", "PENDING")
-            .lte("execute_after", now_utc)
-            .execute()
-        )
 
+# =====================
+# Cron 실행 (장 시작 시)
+# =====================
 @app.post("/cron/execute-orders")
 def cron_execute_orders(secret: str = Query(...)):
     if secret != os.getenv("CRON_SECRET"):
@@ -659,6 +647,7 @@ def cron_execute_orders(secret: str = Query(...)):
 
     for o in res.data or []:
         try:
+            # 실제 주문 실행 로직
             ...
             supabase_admin.table("queued_orders").update({
                 "status": "DONE",
@@ -672,33 +661,16 @@ def cron_execute_orders(secret: str = Query(...)):
 
     return {"status": "ok"}
 
-# =====================
-# API
-# =====================
-@app.get("/login", response_class=HTMLResponse)
-def login_page(request: Request):
-    return templates.TemplateResponse(
-        "login.html",
-        {"request": request}
-    )
 
-@app.get("/", response_class=HTMLResponse)
-def home(request: Request):
-    user = require_login_page(request)
-    if user:
-        return RedirectResponse("/app", status_code=302)
-
-    return templates.TemplateResponse(
-        "login.html",
-        {"request": request}
-    )
-    
+# =====================
+# Queued Orders (사용자)
+# =====================
 @app.get("/api/queued-orders")
 def get_queued_orders(
     request: Request,
     user: str = Depends(get_current_user)
 ):
-    token = request.cookies.get("access_token")
+    token = request.headers.get("authorization", "").replace("Bearer ", "")
     sb = get_user_supabase(token)
 
     res = (
@@ -709,28 +681,23 @@ def get_queued_orders(
         .order("execute_after", desc=False)
         .execute()
     )
-    return {"orders": res.data or []}
-
 
     KST = timezone(timedelta(hours=9))
     orders = []
 
-    for r in rows:
-        execute_dt = datetime.fromisoformat(
-            r["execute_after"].replace("Z", "+00:00")
-        )
-        execute_kst = execute_dt.astimezone(KST)
-
+    for r in res.data or []:
+        dt = datetime.fromisoformat(r["execute_after"].replace("Z", "+00:00"))
         orders.append({
             "id": r["id"],
             "ticker": r["ticker"],
             "side": r["side"],
             "price": float(r["price"]),
             "qty": int(r["qty"]),
-            "execute_after": execute_kst.strftime("%Y-%m-%d %H:%M (KST)")
+            "execute_after": dt.astimezone(KST).strftime("%Y-%m-%d %H:%M (KST)")
         })
 
     return {"orders": orders}
+
 
 @app.delete("/api/queued-orders/{order_id}")
 def delete_queued_order(
@@ -744,29 +711,40 @@ def delete_queued_order(
         .eq("id", order_id)
         .execute()
     )
+
     if not res.data:
         raise HTTPException(404, "order not found")
+
     return {"deleted": order_id}
 
+
+# =====================
+# Watchlist
+# =====================
 @app.get("/tickers")
 def get_tickers():
     return {"tickers": WATCHLIST}
+
+
 @app.post("/tickers")
 def add_ticker(ticker: str = Query(...)):
     t = ticker.upper()
     if t in WATCHLIST:
-        raise HTTPException(status_code=400, detail="Already exists")
+        raise HTTPException(400, "Already exists")
     WATCHLIST.append(t)
     save_watchlist(WATCHLIST)
     return {"added": t}
+
+
 @app.delete("/tickers/{ticker}")
 def delete_ticker(ticker: str):
     t = ticker.upper()
     if t not in WATCHLIST:
-        raise HTTPException(status_code=404, detail="Not found")
+        raise HTTPException(404, "Not found")
     WATCHLIST.remove(t)
     save_watchlist(WATCHLIST)
     return {"removed": t}
+
     
 @app.get("/watchlist")
 def watchlist():
