@@ -68,6 +68,9 @@ def get_access_token():
 def get_overseas_avg_price(ticker: str):
     token = get_access_token()
     url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/inquire-balance"
+
+    excg_cd = get_kis_exchange_code(ticker)   # 🔥 추가
+
     headers = {
         "authorization": f"Bearer {token}",
         "appkey": APP_KEY,
@@ -75,22 +78,22 @@ def get_overseas_avg_price(ticker: str):
         "tr_id": "TTTS3012R",
         "custtype": "P"
     }
+
     params = {
         "CANO": CANO,
         "ACNT_PRDT_CD": ACNT,
-        "TR_CRCY_CD": "USD"
+        "TR_CRCY_CD": "USD",
+        "OVRS_EXCG_CD": excg_cd     # 🔥 핵심
     }
 
     res = requests.get(url, headers=headers, params=params)
     res.raise_for_status()
     data = res.json()
 
-    items = data.get("output2") or []
-
-    # 🔍 디버그 (처음엔 꼭 확인)
+    # 🔍 디버그
     print("KIS RAW:", data)
-    print("KIS OUTPUT2:", items)
 
+    items = data.get("output2") or []
     target = ticker.upper()
 
     for item in items:
@@ -101,7 +104,6 @@ def get_overseas_avg_price(ticker: str):
         if qty <= 0:
             continue
 
-        # ✅ 정확 매칭
         if ovrs_pdno == target:
             return {
                 "found": True,
@@ -109,7 +111,7 @@ def get_overseas_avg_price(ticker: str):
                 "qty": int(qty),
                 "sellable_qty": int(sellable),
                 "total_cost": float(item.get("pchs_amt", 0)),
-                "excg": item.get("ovrs_excg_cd"),
+                "excg": excg_cd
             }
 
     return {
