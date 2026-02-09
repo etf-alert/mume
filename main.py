@@ -115,27 +115,54 @@ def login(data: dict):
 @app.get("/api/queued-orders")
 def get_queued_orders(
     request: Request,
-    user_id: str = Depends(get_current_user)
+    user: str = Depends(get_current_user)
 ):
-    token = request.cookies.get("access_token")
-    if not token:
-        raise HTTPException(status_code=401, detail="no token")
+    # 🔑 Authorization 헤더에서 토큰 추출
+    auth = request.headers.get("authorization")
+    if not auth or not auth.startswith("Bearer "):
+        raise HTTPException(401, "No token")
 
-    sb = get_user_supabase(token)
+    token = auth.replace("Bearer ", "")
+
+    # 👤 사용자 권한 Supabase
+    sb = create_client(
+        SUPABASE_URL,
+        SUPABASE_ANON_KEY,
+        options={
+            "headers": {
+                "Authorization": f"Bearer {token}"
+            }
+        }
+    )
 
     res = (
         sb
         .table("queued_orders")
         .select("id, ticker, side, price, qty, execute_after")
         .eq("status", "PENDING")
-        .order("execute_after")
+        .order("execute_after", desc=False)
         .execute()
     )
 
-    return {
-        "orders": res.data or []
-    }
-        
+    rows = res.data or []
+
+    KST = timezone(timedelta(hours=9))
+    orders = []
+    for r in rows:
+        execute_dt = datetime.fromisoformat(
+            r["execute_after"].replace("Z", "+00:00")
+        )
+        orders.append({
+            "id": r["id"],
+            "ticker": r["ticker"],
+            "side": r["side"],
+            "price": float(r["price"]),
+            "qty": int(r["qty"]),
+            "execute_after": execute_dt.astimezone(KST).strftime("%Y-%m-%d %H:%M (KST)")
+        })
+
+    return {"orders": orders}
+     
 def get_yahoo_quote(ticker: str) -> dict:
     """
     Returns:
