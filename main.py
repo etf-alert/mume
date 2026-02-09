@@ -1,4 +1,3 @@
-import sqlite3
 from datetime import date, datetime, timedelta, timezone
 from fastapi import FastAPI, HTTPException, Query, Request, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -9,12 +8,13 @@ from jose import jwt, JWTError
 import requests
 from pydantic import BaseModel
 from bs4 import BeautifulSoup
+from supabase import create_client
 import json
 import os
 import yfinance as yf
 import pandas as pd
 from kis_api import order_overseas_stock, get_overseas_avg_price
-from uuid import uuid4
+from uuid import UUID, uuid4
 from market_time import is_us_market_open, next_market_open
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockLatestTradeRequest, StockSnapshotRequest
@@ -30,6 +30,17 @@ ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
 alpaca_data = StockHistoricalDataClient(
     api_key=ALPACA_API_KEY,
     secret_key=ALPACA_SECRET_KEY
+)
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+    raise RuntimeError("Supabase env not set")
+
+supabase = create_client(
+    SUPABASE_URL,
+    SUPABASE_SERVICE_KEY
 )
 
 if SECRET_KEY == "change-this":
@@ -317,37 +328,28 @@ def execute_order(
         if order["qty"] > pos["qty"]:
             raise HTTPException(400, "보유 수량 부족")
 
-    # ✅ 장 상태 확인
+    # ✅ 장 상태
     is_open = is_us_market_open()
     next_open = next_market_open()
 
     # ==========================
-    # 🌙 장전 / 시간외 → 주문 큐잉
+    # 🌙 장 닫힘 → Supabase 큐잉
     # ==========================
     if not is_open:
-        conn = sqlite3.connect(DB_FILE)
-        cur = conn.cursor()
-        try:
-            cur.execute("""
-                INSERT INTO queued_orders
-                (id, ticker, side, price, qty, created_at, execute_after, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING')
-            """, (
-                order_id,
-                order["ticker"],
-                order["side"],
-                order["price"],
-                order["qty"],
-                datetime.utcnow().isoformat(),   # UTC 저장
-                next_open.isoformat()            # ET 기준 저장
-            ))
-            conn.commit()
-        finally:
-            conn.close()
+        supabase.table("queued_orders").insert({
+            "id": order_id,
+            "ticker": order["ticker"],
+            "side": order["side"],
+            "price": order["price"],
+            "qty": order["qty"],
+            "created_at": datetime.utcnow().isoformat(),
+            "execute_after": next_open.isoformat(),
+            "status": "PENDING"
+        }).execute()
 
         ORDER_CACHE.pop(order_id, None)
 
-        # ✅ KST 변환 (응답용)
+        # 응답용 KST 변환
         KST = timezone(timedelta(hours=9))
         execute_after_kst = next_open.astimezone(KST)
 
@@ -361,6 +363,7 @@ def execute_order(
     # 📈 정규장 → 즉시 실행
     # ==========================
     side = "buy" if order["side"].startswith("BUY") else "sell"
+
     try:
         result = order_overseas_stock(
             ticker=order["ticker"],
@@ -368,12 +371,15 @@ def execute_order(
             qty=order["qty"],
             side=side
         )
+
         ORDER_CACHE.pop(order_id, None)
+
         return {
             "status": "ok",
             "order": order,
             "result": result
         }
+
     except Exception as e:
         msg = str(e)
         if hasattr(e, "response") and e.response is not None:
@@ -382,43 +388,6 @@ def execute_order(
             except Exception:
                 pass
         raise HTTPException(status_code=400, detail=msg)
-
-# =====================
-# DB 설정
-# =====================
-DB_FILE = "rsi_history.db"
-
-def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS rsi_history (
-        ticker TEXT,
-        day TEXT,
-        rsi REAL,
-        price REAL,
-        PRIMARY KEY (ticker, day)
-    )
-    """)
-
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS queued_orders (
-        id TEXT PRIMARY KEY,
-        ticker TEXT NOT NULL,
-        side TEXT NOT NULL,
-        price REAL NOT NULL,
-        qty INTEGER NOT NULL,
-        created_at TEXT NOT NULL,
-        execute_after TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'PENDING'
-    )
-    """)
-
-    conn.commit()
-    conn.close()
-
-init_db()
 
 # =====================
 # FastAPI
@@ -555,35 +524,32 @@ def home(request: Request):
     
 @app.get("/api/queued-orders")
 def get_queued_orders(user: str = Depends(get_current_user)):
-    conn = sqlite3.connect(DB_FILE)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+    res = (
+        supabase
+        .table("queued_orders")
+        .select("id, ticker, side, price, qty, execute_after")
+        .eq("status", "PENDING")
+        .order("execute_after", desc=False)
+        .execute()
+    )
 
-    cur.execute("""
-        SELECT id, ticker, side, price, qty, execute_after
-        FROM queued_orders
-        WHERE status = 'PENDING'
-        ORDER BY execute_after ASC
-    """)
-    rows = cur.fetchall()
-    conn.close()
+    rows = res.data or []
 
     KST = timezone(timedelta(hours=9))
     orders = []
 
     for r in rows:
-        # DB에는 ET/UTC ISO 문자열 → datetime 변환
-        execute_dt = datetime.fromisoformat(r["execute_after"])
-
-        # KST 변환
+        execute_dt = datetime.fromisoformat(
+            r["execute_after"].replace("Z", "+00:00")
+        )
         execute_kst = execute_dt.astimezone(KST)
 
         orders.append({
             "id": r["id"],
             "ticker": r["ticker"],
             "side": r["side"],
-            "price": r["price"],
-            "qty": r["qty"],
+            "price": float(r["price"]),
+            "qty": int(r["qty"]),
             "execute_after": execute_kst.strftime("%Y-%m-%d %H:%M (KST)")
         })
 
@@ -594,18 +560,15 @@ def delete_queued_order(
     order_id: str,
     user: str = Depends(get_current_user)
 ):
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-
-    cur.execute(
-        "DELETE FROM queued_orders WHERE id = ?",
-        (order_id,)
+    res = (
+        supabase
+        .table("queued_orders")
+        .delete()
+        .eq("id", order_id)
+        .execute()
     )
-    deleted = cur.rowcount
-    conn.commit()
-    conn.close()
 
-    if deleted == 0:
+    if not res.data:
         raise HTTPException(404, "order not found")
 
     return {"deleted": order_id}
