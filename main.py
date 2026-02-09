@@ -164,48 +164,23 @@ def get_realtime_price(ticker: str) -> dict:
         "post": post,
     }
 
-
 def resolve_prices(ticker: str):
     closes = get_yf_daily_closes(ticker, period="5d")
     close_price = closes[-1]
     prev_close = closes[-2]
-
     realtime = get_realtime_price(ticker)
     phase = get_market_phase()
 
-    # =====================
     # 기준가 (항상 정규장 기준)
-    # =====================
     base_price = realtime["regular"] or close_price
 
-    # =====================
-    # 표시가
-    # =====================
     if phase == "REGULAR":
         display_price = base_price
         price_source = "REGULAR"
-        after_change = after_change_pct = None   # ✅ 정규장엔 시간외 숨김
-
-    elif phase == "PRE" and realtime["pre"] is not None:
-        display_price = realtime["pre"]
-        price_source = "PRE"
-        after_change = display_price - base_price
-        after_change_pct = (after_change / base_price) * 100
-
-    elif phase == "POST" and realtime["post"] is not None:
-        display_price = realtime["post"]
-        price_source = "POST"
-        after_change = display_price - base_price
-        after_change_pct = (after_change / base_price) * 100
-
     else:
         display_price = base_price
         price_source = "CLOSE"
-        after_change = after_change_pct = None
 
-    # =====================
-    # 정규장 변화량
-    # =====================
     current_change = base_price - prev_close
     current_change_pct = (current_change / prev_close) * 100
 
@@ -215,10 +190,10 @@ def resolve_prices(ticker: str):
         "price_source": price_source,
         "current_change": round(current_change, 2),
         "current_change_pct": round(current_change_pct, 2),
-        "after_change": round(after_change, 2) if after_change is not None else None,
-        "after_change_pct": round(after_change_pct, 2) if after_change_pct is not None else None,
+        # ❌ 시간외 완전 제거
+        "after_change": None,
+        "after_change_pct": None,
     }
-
 
 def get_yf_daily_closes(ticker: str, period="6mo") -> list[float]:
     df = yf.download(
