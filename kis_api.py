@@ -84,6 +84,8 @@ def get_overseas_avg_price(ticker: str):
         "ACNT_PRDT_CD": ACNT,
         "TR_CRCY_CD": "USD",
         "OVRS_EXCG_CD": excg_cd     # 🔥 핵심
+        "CTX_AREA_FK200": "",   # 🔥 필수
+        "CTX_AREA_NK200": ""    # 🔥 필수
     }
 
     res = requests.get(url, headers=headers, params=params)
