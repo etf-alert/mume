@@ -292,7 +292,7 @@ authFetch(`/chart/${ticker}`)
 
 if (res.price_source === "REGULAR") {
   // =======================
-  // 정규장: 현재가 기준
+  // 정규장
   // =======================
   mainLine.innerHTML = `
     $${res.current_price.toFixed(2)}
@@ -302,27 +302,25 @@ if (res.price_source === "REGULAR") {
     </span>
   `;
   subLine.innerHTML = "";
-} else {
+
+} else if (res.price_source === "CLOSE") {
   // =======================
-  // 장외 (PRE / POST / CLOSE)
+  // 종가만 표시
   // =======================
   mainLine.innerHTML = `
-    $${res.current_price.toFixed(2)}
-    <span class="change ${updown(res.current_change)}">
-      (${sign(res.current_change)}${res.current_change},
-       ${sign(res.current_change_pct)}${res.current_change_pct}%)
-    </span>
-  `;
-  subLine.innerHTML = `
-    <span class="badge ${res.price_source.toLowerCase()}">
-      ${res.price_source}
-    </span>
     $${res.display_price.toFixed(2)}
-    <span class="change ${updown(res.after_change || 0)}">
-      (${sign(res.after_change || 0)}${res.after_change || 0},
-       ${sign(res.after_change_pct || 0)}${res.after_change_pct || 0}%)
-    </span>
+    <span class="badge close">CLOSE</span>
   `;
+  subLine.innerHTML = "";
+
+} else {
+  // =======================
+  // PRE / POST → 아예 표시 안 함
+  // =======================
+  mainLine.innerHTML = `
+    $${res.display_price.toFixed(2)}
+  `;
+  subLine.innerHTML = "";
 }
 
 
