@@ -33,16 +33,39 @@ alpaca_data = StockHistoricalDataClient(
     secret_key=ALPACA_SECRET_KEY
 )
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
-
-if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-    raise RuntimeError("Supabase env not set")
-
-supabase = create_client(
+# 🔐 서버 전용 (cron / 백엔드 내부용)
+supabase_admin = create_client(
     SUPABASE_URL,
     SUPABASE_SERVICE_KEY
 )
+
+# 👤 유저 요청용 (RLS 적용)
+def get_user_supabase(access_token: str):
+    return create_client(
+        SUPABASE_URL,
+        access_token
+    )
+    
+def get_current_user_token(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return token
+    except JWTError:
+        raise HTTPException(401, "invalid token")
+
+@app.get("/api/queued-orders")
+def get_queued_orders(
+    token: str = Depends(get_current_user_token)
+):
+    supabase = get_user_supabase(token)
+
+    res = (
+        supabase
+        .table("queued_orders")
+        .select("*")
+        .execute()
+    )
+    return res.data
 
 if SECRET_KEY == "change-this":
     raise RuntimeError("JWT_SECRET not set")
@@ -570,26 +593,41 @@ def cron_execute_orders(secret: str = Query(...)):
     if secret != os.getenv("CRON_SECRET"):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-        for o in res.data or []:
-            try:
-                side = "buy" if o["side"].startswith("BUY") else "sell"
-                result = order_overseas_stock(
-                    ticker=o["ticker"],
-                    price=o["price"],
-                    qty=o["qty"],
-                    side=side
-                )
-                supabase.table("queued_orders").update({
-                    "status": "DONE",
-                    "executed_at": datetime.utcnow().isoformat()
-                }).eq("id", o["id"]).execute()
-            except Exception as e:
-                supabase.table("queued_orders").update({
-                    "status": "ERROR",
-                    "error": str(e)
-                }).eq("id", o["id"]).execute()
+    # 1️⃣ 실행 대상 조회
+    res = (
+        supabase
+        .table("queued_orders")
+        .select("*")
+        .eq("status", "PENDING")
+        .lte("execute_after", datetime.utcnow().isoformat())
+        .execute()
+    )
 
-    run_execute_orders()
+    # 2️⃣ 주문 실행
+    for o in res.data or []:
+        try:
+            side = "buy" if o["side"].startswith("BUY") else "sell"
+
+            result = order_overseas_stock(
+                ticker=o["ticker"],
+                price=o["price"],
+                qty=o["qty"],
+                side=side
+            )
+
+            # 3️⃣ 성공 → DONE
+            supabase.table("queued_orders").update({
+                "status": "DONE",
+                "executed_at": datetime.utcnow().isoformat()
+            }).eq("id", o["id"]).execute()
+
+        except Exception as e:
+            # 4️⃣ 실패 → ERROR
+            supabase.table("queued_orders").update({
+                "status": "ERROR",
+                "error": str(e)
+            }).eq("id", o["id"]).execute()
+
     return {"status": "ok"}
 
 # =====================
