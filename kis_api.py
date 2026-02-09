@@ -83,7 +83,7 @@ def get_overseas_avg_price(ticker: str):
         "CANO": CANO,
         "ACNT_PRDT_CD": ACNT,
         "TR_CRCY_CD": "USD",
-        "OVRS_EXCG_CD": excg_cd     # 🔥 핵심
+        "OVRS_EXCG_CD": excg_cd,     # 🔥 핵심
         "CTX_AREA_FK200": "",   # 🔥 필수
         "CTX_AREA_NK200": ""    # 🔥 필수
     }
