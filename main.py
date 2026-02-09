@@ -117,14 +117,14 @@ def get_queued_orders(
     request: Request,
     user: str = Depends(get_current_user)
 ):
-    # 🔑 Authorization 헤더에서 토큰 추출
+    # 🔑 Authorization 헤더에서 JWT 추출
     auth = request.headers.get("authorization")
     if not auth or not auth.startswith("Bearer "):
-        raise HTTPException(401, "No token")
+        raise HTTPException(status_code=401, detail="No token")
 
     token = auth.replace("Bearer ", "")
 
-    # 👤 사용자 권한 Supabase
+    # 👤 RLS 적용 Supabase client
     sb = create_client(
         SUPABASE_URL,
         SUPABASE_ANON_KEY,
@@ -145,8 +145,8 @@ def get_queued_orders(
     )
 
     rows = res.data or []
-
     KST = timezone(timedelta(hours=9))
+
     orders = []
     for r in rows:
         execute_dt = datetime.fromisoformat(
@@ -162,6 +162,7 @@ def get_queued_orders(
         })
 
     return {"orders": orders}
+
      
 def get_yahoo_quote(ticker: str) -> dict:
     """
@@ -400,7 +401,7 @@ def execute_order(
             "qty": order["qty"],
             "execute_after": next_open.astimezone(timezone.utc).isoformat(),
             "status": "PENDING",
-            "user_id": user_uuid,   # ⭐ 필수
+            "user_id": user   # ⭐ 필수
         }).execute()
 
         ORDER_CACHE.pop(order_id, None)
@@ -715,16 +716,14 @@ def delete_queued_order(
     user: str = Depends(get_current_user)
 ):
     res = (
-        supabase
+        supabase_admin
         .table("queued_orders")
         .delete()
         .eq("id", order_id)
         .execute()
     )
-
     if not res.data:
         raise HTTPException(404, "order not found")
-
     return {"deleted": order_id}
 
 @app.get("/tickers")
