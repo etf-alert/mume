@@ -98,6 +98,10 @@ def require_login_page(request: Request):
 # =====================
 # Auth API
 # =====================
+@app.get("/")
+def root():
+    return "OK"
+
 @app.post("/api/auth/login")
 def login(data: dict):
     user_id = data["id"]
