@@ -252,10 +252,13 @@ async function login() {
     document.getElementById("login-status").innerText = "로그인 실패";
     return;
   }
-
   localStorage.setItem("token", data.access_token);
   document.getElementById("login-status").innerText = "로그인 성공";
   document.getElementById("login-box").style.display = "none";
+
+  loadData();          // ✅ 추가
+  loadReservedOrders(); // ✅ 추가
+  loadQueuedOrders();   // ✅ 추가
 }
 
 async function authFetch(url, options = {}) {
@@ -391,8 +394,8 @@ async function deleteReservedOrder(orderId) {
 document.addEventListener("DOMContentLoaded", loadReservedOrders);
   
 document.addEventListener("DOMContentLoaded", () => {
-  loadWatchlist();      // 기존
-  loadQueuedOrders();  // 🔥 추가
+  loadData();
+  loadQueuedOrders();
 });
 
 async function loadData() {
@@ -400,7 +403,7 @@ async function loadData() {
 
   let res;
   try {
-    res = await fetch("/watchlist");
+    res = await authFetch("/watchlist");
   } catch (e) {
     body.innerHTML =
       "<tr><td colspan='4' class='cell'>네트워크 오류</td></tr>";
