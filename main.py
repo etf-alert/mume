@@ -390,17 +390,19 @@ def execute_order(order_id: str, user: str = Depends(get_current_user)):
 # 🔥 예약 주문 목록 조회
 # =====================
 @app.get("/api/order/reserve")
-def get_reserved_orders(user: str = Depends(get_current_user)):
+def list_reserved_orders(
+    user: str = Depends(get_current_user)
+):
     res = (
         supabase_admin
         .table("order_reservations")
-        .select("id, ticker, side, price, qty, execute_at, status")
+        .select("id,ticker,side,price,qty,execute_at,status")
         .eq("user_id", user)
         .eq("status", "PENDING")
         .order("execute_at")
         .execute()
     )
-    return res.data or []
+    return res.data
 
 @app.post("/api/order/reserve")
 async def reserve_order(
