@@ -234,6 +234,22 @@ def list_queued_orders(user: str = Depends(get_current_user)):
 
     return result
 
+# =====================
+# 🔥 repeat_group 전체 개수 계산 (공통)
+# =====================
+def get_repeat_total(db, repeat_group: str) -> int:
+    if not repeat_group:
+        return 1
+    res = (
+        db
+        .table("queued_orders")
+        .select("id", count="exact")
+        .eq("repeat_group", repeat_group)
+        .neq("status", "ERROR")   # 🔧 FIX
+        .execute()
+    )
+    return res.count or 1
+
 
 def get_yahoo_quote(ticker: str) -> dict:
     """
@@ -363,92 +379,81 @@ def get_yf_daily_closes(ticker: str, period="6mo") -> list[float]:
 
     return close.astype(float).tolist()
 
+# =====================
+# 🔧 FIX: order_preview 로직 분리 (순수 함수)
+# =====================
+def build_order_preview(data: dict):
+    price_type = None
+    message = None
+
+    side = data["side"]
+    avg = float(data["avg_price"])
+    cur = float(data["current_price"])
+    seed = float(data["seed"])
+    ticker = data["ticker"]
+
+    if side == "BUY_MARKET":
+        price = round(min(avg * 1.05, cur * 1.15), 2)
+        qty = int((seed / 80) // price)
+        price_type = "LOC"
+        message = "큰 수 매수 (LOC)"
+
+    elif side == "BUY_AVG":
+        price = round(avg, 2)
+        qty = int((seed / 80) // price)
+        price_type = "LOC"
+        message = "평단가 매수 (LOC)"
+
+    elif side == "SELL":
+        pos = get_overseas_avg_price(ticker)
+        qty = pos["qty"]
+        if qty <= 0:
+            raise ValueError("매도 가능 수량 없음")
+
+        target_price = round(avg * 1.10, 2)
+        if cur > target_price:
+            price = round(cur, 2)
+            price_type = "MARKET_BETTER"
+            message = "현재가가 목표가보다 높아 현재가로 매도"
+        else:
+            price = target_price
+            price_type = "TARGET"
+            message = "목표가(평단+10%)로 매도"
+    else:
+        raise ValueError("invalid side")
+
+    if qty <= 0:
+        raise ValueError("수량 0")
+
+    return {
+        "price": price,
+        "qty": qty,
+        "price_type": price_type,
+        "message": message
+    }
+
 @app.post("/api/order/preview")
 def order_preview(
     data: dict,
     user: str = Depends(get_current_user)
 ):
     cleanup_order_cache()
-    
+
     try:
-        # ✅ 기본값 (모든 분기에서 안전)
-        price_type = None
-        message = None
-
-        side = data["side"]
-        avg = float(data["avg_price"])
-        cur = float(data["current_price"])
-        seed = float(data["seed"])
-        ticker = data["ticker"]
-
-        # ✅ 가격 결정
-        if side == "BUY_MARKET":
-            price = round(min(avg * 1.05, cur * 1.15), 2)
-            qty = int((seed / 80) // price)
-            price_type = "LOC"
-            message = "큰 수 매수 (LOC)"
-
-        elif side == "BUY_AVG":
-            price = round(avg, 2)
-            qty = int((seed / 80) // price)
-            price_type = "LOC"
-            message = "평단가 매수 (LOC)"
-
-        elif side == "SELL":
-            pos = get_overseas_avg_price(ticker)
-            qty = pos["qty"]
-
-            if qty <= 0:
-                raise HTTPException(400, "매도 가능 수량 없음")
-
-            target_price = round(avg * 1.10, 2)
-
-            if cur > target_price:
-                price = round(cur, 2)
-                price_type = "MARKET_BETTER"
-                message = "현재가가 목표가보다 높아 현재가로 매도"
-            else:
-                price = target_price
-                price_type = "TARGET"
-                message = "목표가(평단+10%)로 매도"
-
-        else:
-            raise HTTPException(400, "invalid side")
-
-        if qty <= 0:
-            raise HTTPException(400, "수량 0")
-
+        preview = build_order_preview(data)  # 🔧 FIX
         order_id = str(uuid4())
+
         ORDER_CACHE[order_id] = {
-            "side": side,
-            "price": price,
-            "qty": qty,
-            "ticker": ticker,
-            "price_type": price_type,
-            "message": message,
+            **preview,
+            "side": data["side"],
+            "ticker": data["ticker"],
             "created_at": datetime.now(UTC)
         }
 
-        if len(ORDER_CACHE) > 1000:
-            ORDER_CACHE.clear()
+        return {"order_id": order_id, **preview}
 
-        return {
-            "order_id": order_id,
-            "price": price,
-            "qty": qty,
-            "price_type": price_type,
-            "message": message
-        }
-
-    except HTTPException:
-        raise  # FastAPI용 에러는 그대로 던짐
-
-    except Exception as e:
-        print("❌ order_preview error:", e)
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 @app.post("/api/order/execute/{order_id}")
 def execute_order(order_id: str, user: str = Depends(get_current_user)):
@@ -483,21 +488,6 @@ def execute_order(order_id: str, user: str = Depends(get_current_user)):
 # =====================
 # 🔥 예약 주문 목록 조회
 # =====================
-@app.get("/api/order/reserve")
-def list_reserved_orders(
-    user: str = Depends(get_current_user)
-):
-    res = (
-        supabase_admin
-        .table("order_reservations")
-        .select("id,ticker,side,price,qty,execute_at,status")
-        .eq("user_id", user)
-        .eq("status", "PENDING")
-        .order("execute_at")
-        .execute()
-    )
-    return res.data
-
 @app.post("/api/order/reserve")
 async def reserve_order(
     request: Request,
@@ -507,7 +497,7 @@ async def reserve_order(
 
     order_id = body["order_id"]
     minutes = int(body["execute_after_minutes"])
-    repeat_days = int(body.get("repeat_days", 1))   # 🟢 NEW
+    repeat_days = int(body.get("repeat_days", 1))
 
     order = ORDER_CACHE.get(order_id)
     if not order:
@@ -516,11 +506,8 @@ async def reserve_order(
     if minutes < 0 or minutes > 60 * 6:
         raise HTTPException(400, "예약 시간은 0~360분만 가능")
 
-    if repeat_days < 1 or repeat_days > 120:        # 🟢 NEW (안전장치)
+    if repeat_days < 1 or repeat_days > 120:
         raise HTTPException(400, "repeat_days 범위 오류")
-
-    # ❌ 기존 order_reservations 중복 체크 제거
-    # 반복 예약은 여러 row 생성이기 때문
 
     # =========================
     # 🟢 NEW: 영업일 계산
@@ -534,7 +521,7 @@ async def reserve_order(
     for idx, day in enumerate(trading_days, start=1):
         execute_at = calculate_execute_at_from_market_open(
             minutes,
-            base_date=day        # 🔧 CHANGED
+            base_date=day   # 🔧 CHANGED
         )
 
         if execute_at <= datetime.now(timezone.utc):
@@ -545,16 +532,16 @@ async def reserve_order(
             "ticker": order["ticker"],
             "side": order["side"],
 
-            # ❌ price / qty 저장 안 함
-            # 🟢 실행 시점에 계산하기 위함
-            "seed": body["seed"],             # 🟢 NEW
-            "avg_price": body["avg_price"],   # 🟢 NEW
+            # 🔧 실행 시점 계산용 데이터만 저장
+            "seed": body["seed"],
+            "avg_price": body["avg_price"],
 
             "execute_after": execute_at.astimezone(timezone.utc).isoformat(),
             "status": "PENDING",
 
-            "repeat_group": repeat_group,     # 🟢 NEW
-            "repeat_index": idx               # 🟢 NEW
+            # 🟢 반복 주문 식별
+            "repeat_group": repeat_group,
+            "repeat_index": idx
         })
 
     if not rows:
@@ -804,11 +791,26 @@ def cron_execute_reservations(secret: str = Query(...)):
                 "executed_at": now.isoformat()
             }).eq("id", o["id"]).execute()
 
+             # 🔥 🔥 🔥 텔레그램 성공 알림
+            send_order_success_telegram(
+                order=o,
+                executed_price=preview["price"],
+                executed_qty=preview["qty"],
+                db=supabase_admin
+            )
+
         except Exception as e:
             supabase_admin.table("queued_orders").update({
                 "status": "ERROR",
                 "error": str(e)
             }).eq("id", o["id"]).execute()
+
+            # 🔥 🔥 🔥 텔레그램 실패 알림
+            send_order_fail_telegram(
+                order=o,
+                error_msg=str(e),
+                db=supabase_admin
+            )
 
     return {"status": "ok"}
 
@@ -822,16 +824,19 @@ def delete_reserved_order(
 ):
     res = (
         supabase_admin
-        .table("order_reservations")
+        .table("queued_orders")          # 🔧 CHANGED
         .delete()
         .eq("id", order_id)
         .eq("user_id", user)
-        .eq("status", "PENDING")   # 🔧 CHANGED: 실행 전인 것만 삭제 가능
+        .eq("status", "PENDING")         # 실행 전만 삭제 가능
         .execute()
     )
+
     if not res.data:
         raise HTTPException(404, "예약 주문 없음 또는 삭제 불가")
+
     return {"deleted": order_id}
+
 
 # =====================
 # 🔥 예약 주문 1건 삭제
@@ -1000,7 +1005,7 @@ def chart_data(ticker: str, user=Depends(get_current_user)):
         "price_source": p["price_source"],
     }
     
-def send_order_success_telegram(order: dict, executed_price: float, executed_qty: int, db):
+def send_order_success_telegram(order: dict, executed_price: float, executed_qty: int, executed_at: datetime, db):
     total = get_repeat_total(db, order["repeat_group"])
 
     executed_at = order.get("executed_at")
