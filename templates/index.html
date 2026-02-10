@@ -305,7 +305,7 @@ async function loadReservedOrders() {
       <td>${sideMap[o.side] ?? o.side}</td>
       <td>${new Date(o.start_at).toLocaleString()}</td>
       <td style="font-weight:600;">
-        ${o.done_count}(완) / ${o.repeat_count}
+        ${o.repeat_label ?? "-"}
       </td>
       <td>
         ${o.next_execute_at
