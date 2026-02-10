@@ -99,6 +99,14 @@ def require_login_page(request: Request):
         return payload.get("sub")
     except JWTError:
         return None
+        
+def calculate_execute_at_from_market_open(execute_after_minutes: int):
+    market_open = next_market_open()  # ✅ 네가 이미 가진 함수
+
+    if market_open is None:
+        raise ValueError("다음 정규장 시작 시간을 찾을 수 없습니다")
+
+    return market_open + timedelta(minutes=execute_after_minutes)
 
 # =====================
 # Auth API
@@ -266,6 +274,8 @@ def order_preview(
     data: dict,
     user: str = Depends(get_current_user)
 ):
+    cleanup_order_cache()
+    
     try:
         # ✅ 기본값 (모든 분기에서 안전)
         price_type = None
@@ -347,18 +357,16 @@ def order_preview(
         )
 
 @app.post("/api/order/execute/{order_id}")
-def execute_order(
-    order_id: str,
-    user: str = Depends(get_current_user)
-):
+def execute_order(order_id: str, user: str = Depends(get_current_user)):
     order = ORDER_CACHE.get(order_id)
     if not order:
         raise HTTPException(404, "order not found")
 
-    # ⏰ 만료 체크
-    if datetime.now(UTC) - order["created_at"] > timedelta(minutes=5):
-        ORDER_CACHE.pop(order_id, None)
-        raise HTTPException(400, "order expired")
+    if not is_us_market_open():
+        raise HTTPException(
+            400,
+            "정규장에만 즉시 주문 가능합니다. 예약 주문을 사용하세요."
+        )
 
     # 🔁 매도 수량 재검증
     if order["side"] == "SELL":
@@ -366,66 +374,89 @@ def execute_order(
         if order["qty"] > pos["qty"]:
             raise HTTPException(400, "보유 수량 부족")
 
-    # ✅ 장 상태
-    is_open = is_us_market_open()
-    next_open = next_market_open()
-
-    # ==========================
-    # 🌙 장 닫힘 → Supabase 큐잉
-    # ==========================
-    if not is_open:
-        supabase_admin.table("queued_orders").insert({
-            "id": order_id,
-            "ticker": order["ticker"],
-            "side": order["side"],
-            "price": order["price"],
-            "qty": order["qty"],
-            "execute_after": next_open.astimezone(timezone.utc).isoformat(),
-            "status": "PENDING",
-            "user_id": user   # ⭐ 필수
-        }).execute()
-
-        ORDER_CACHE.pop(order_id, None)
-
-        # 응답용 KST 변환
-        KST = timezone(timedelta(hours=9))
-        execute_after_kst = next_open.astimezone(KST)
-
-        return {
-            "status": "queued",
-            "message": "장 시작 후 자동 실행",
-            "execute_after": execute_after_kst.strftime("%Y-%m-%d %H:%M (KST)")
-        }
-
-    # ==========================
-    # 📈 정규장 → 즉시 실행
-    # ==========================
     side = "buy" if order["side"].startswith("BUY") else "sell"
 
+    result = order_overseas_stock(
+        ticker=order["ticker"],
+        price=order["price"],
+        qty=order["qty"],
+        side=side
+    )
+
+    ORDER_CACHE.pop(order_id, None)
+    return {"status": "ok", "result": result}
+    
+# =====================
+# 🔥 예약 주문 목록 조회
+# =====================
+@app.get("/api/order/reserve")
+def get_reserved_orders(user: str = Depends(get_current_user)):
+    res = (
+        supabase_admin
+        .table("order_reservations")
+        .select("id, ticker, side, price, qty, execute_at, status")
+        .eq("user_id", user)
+        .eq("status", "PENDING")
+        .order("execute_at")
+        .execute()
+    )
+    return res.data or []
+
+@app.post("/api/order/reserve")
+async def reserve_order(
+    request: Request,
+    user: str = Depends(get_current_user)
+):
+    body = await request.json()
+
+    order_id = body["order_id"]
+    minutes = int(body["execute_after_minutes"])
+
+    order = ORDER_CACHE.get(order_id)
+    if not order:
+        raise HTTPException(404, "order not found")
+
+    if minutes < 0 or minutes > 60 * 6:
+        raise HTTPException(400, "예약 시간은 0~360분만 가능")
+
+    exists = (
+        supabase_admin
+        .table("order_reservations")
+        .select("id")
+        .eq("id", order_id)
+        .execute()
+    )
+
+    if exists.data:
+        raise HTTPException(400, "이미 예약된 주문입니다")
+
+    execute_at = calculate_execute_at_from_market_open(minutes)
+
+    if execute_at <= datetime.now(timezone.utc):
+        raise HTTPException(400, "예약 시간이 이미 지났습니다")  
+
     try:
-        result = order_overseas_stock(
-            ticker=order["ticker"],
-            price=order["price"],
-            qty=order["qty"],
-            side=side
-        )
-
-        ORDER_CACHE.pop(order_id, None)
-
-        return {
-            "status": "ok",
-            "order": order,
-            "result": result
-        }
-
+        supabase_admin.table("order_reservations").insert({
+        "id": order_id,
+        "user_id": user,
+        "ticker": order["ticker"],
+        "side": order["side"],
+        "price": order["price"],
+        "qty": order["qty"],
+        "execute_at": execute_at.astimezone(timezone.utc).isoformat(),
+        "status": "PENDING"
+    }).execute()
     except Exception as e:
-        msg = str(e)
-        if hasattr(e, "response") and e.response is not None:
-            try:
-                msg = e.response.text
-            except Exception:
-                pass
-        raise HTTPException(status_code=400, detail=msg)
+        raise HTTPException(500, f"예약 저장 실패: {e}")
+
+    ORDER_CACHE.pop(order_id, None)
+
+    return {
+        "status": "reserved",
+        "execute_at": execute_at.isoformat(),
+        "qty": order["qty"]
+    }
+
 
 # =====================
 # FastAPI
@@ -551,6 +582,16 @@ def get_watchlist_item(ticker: str):
     print("WATCHLIST ITEM DEBUG:", item)
     return item
 
+def cleanup_order_cache():
+    now = datetime.now(UTC)
+    expired = [
+        k for k, v in ORDER_CACHE.items()
+        if now - v["created_at"] > timedelta(minutes=10)
+    ]
+    for k in expired:
+        ORDER_CACHE.pop(k, None)
+
+
 # =====================
 # Cron 저장
 # =====================
@@ -588,88 +629,70 @@ def cron_save(secret: str = Query(...)):
 # =====================
 # Cron 실행 (장 시작 시)
 # =====================
-@app.post("/cron/execute-orders")
-def cron_execute_orders(secret: str = Query(...)):
+@app.post("/cron/execute-reservations")
+def cron_execute_reservations(secret: str = Query(...)):
     if secret != os.getenv("CRON_SECRET"):
         raise HTTPException(403)
 
+    now = datetime.utcnow().isoformat()
+
     res = (
         supabase_admin
-        .table("queued_orders")
+        .table("order_reservations")
         .select("*")
         .eq("status", "PENDING")
-        .lte("execute_after", datetime.utcnow().isoformat())
+        .lte("execute_at", now)
         .execute()
     )
 
     for o in res.data or []:
         try:
-            # 실제 주문 실행 로직
-            ...
-            supabase_admin.table("queued_orders").update({
+            side = "buy" if o["side"].startswith("BUY") else "sell"
+
+            if not is_us_market_open():
+                continue
+
+            order_overseas_stock(
+                ticker=o["ticker"],
+                price=float(o["price"]),
+                qty=int(o["qty"]),
+                side=side
+            )
+
+            supabase_admin.table("order_reservations").update({
                 "status": "DONE",
-                "executed_at": datetime.utcnow().isoformat()
+                "executed_at": now
             }).eq("id", o["id"]).execute()
+
         except Exception as e:
-            supabase_admin.table("queued_orders").update({
+            supabase_admin.table("order_reservations").update({
                 "status": "ERROR",
                 "error": str(e)
             }).eq("id", o["id"]).execute()
 
     return {"status": "ok"}
 
-
 # =====================
-# Queued Orders (사용자 / RLS 적용)
+# 🔥 예약 주문 삭제 API
 # =====================
-@app.get("/api/queued-orders")
-def get_queued_orders(user: str = Depends(get_current_user)):
-    res = (
-        supabase_admin
-        .table("queued_orders")
-        .select("id, ticker, side, price, qty, execute_after")
-        .eq("status", "PENDING")
-        .eq("user_id", user)
-        .order("execute_after")
-        .execute()
-    )
-    KST = timezone(timedelta(hours=9))
-    orders = []
-
-    for r in res.data or []:
-        dt = datetime.fromisoformat(r["execute_after"].replace("Z", "+00:00"))
-        orders.append({
-            "id": r["id"],
-            "ticker": r["ticker"],
-            "side": r["side"],
-            "price": float(r["price"]),
-            "qty": int(r["qty"]),
-            "execute_after": dt.astimezone(KST).strftime("%Y-%m-%d %H:%M (KST)")
-        })
-
-    return {"orders": orders}
-
-@app.delete("/api/queued-orders/{order_id}")
-def delete_queued_order(
+@app.delete("/api/order/reserve/{order_id}")
+def delete_reserved_order(
     order_id: str,
-    request: Request,
     user: str = Depends(get_current_user)
 ):
-    token = request.headers.get("authorization", "").replace("Bearer ", "")
-    sb = get_user_supabase(token)   # ✅ 사용자 client
-
     res = (
-        sb
-        .table("queued_orders")
+        supabase_admin
+        .table("order_reservations")
         .delete()
         .eq("id", order_id)
+        .eq("user_id", user)
+        .eq("status", "PENDING")   # 🔧 CHANGED: 실행 전인 것만 삭제 가능
         .execute()
     )
-
     if not res.data:
-        raise HTTPException(404, "order not found")
-
+        raise HTTPException(404, "예약 주문 없음 또는 삭제 불가")
     return {"deleted": order_id}
+
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
