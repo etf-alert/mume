@@ -20,6 +20,7 @@ from market_time import is_us_market_open, next_market_open
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockLatestTradeRequest, StockSnapshotRequest
 from market_time import (is_us_market_open,is_us_premarket,is_us_postmarket,)
+import pandas_market_calendars as mcal
 
 # =====================
 # ENV
@@ -74,6 +75,9 @@ templates = Jinja2Templates(directory="templates")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
+nyse = mcal.get_calendar("NYSE")
+ny_tz = pytz.timezone("US/Eastern")
+
 # =====================
 # Auth utils
 # =====================
@@ -99,7 +103,14 @@ def require_login_page(request: Request):
         return payload.get("sub")
     except JWTError:
         return None
-        
+
+def get_next_n_trading_days(start_date, n):
+    schedule = nyse.schedule(
+        start_date=start_date,
+        end_date=start_date + timedelta(days=n * 2)
+    )
+    return list(schedule.index[:n])
+
 def calculate_execute_at_from_market_open(execute_after_minutes: int):
     market_open = next_market_open()  # ✅ 네가 이미 가진 함수
 
