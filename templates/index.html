@@ -190,6 +190,18 @@
     </thead>
     <tbody id="reserved-orders-body"></tbody>
   </table>
+  <table id="reservedTable">
+  <thead>
+    <tr>
+      <th>종목</th>
+      <th>구분</th>
+      <th>실행일시</th>
+      <th>회차</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
 </div>
  
 <h1>📊 Watchlist</h1>
@@ -315,6 +327,55 @@ async function loadReservedOrders() {
     tbody.appendChild(tr);
   });
 }
+  
+async function loadQueuedOrders() {
+  const res = await fetch("/api/queued-orders");
+  const orders = await res.json();
+
+  const tbody = document.querySelector("#reservedTable tbody");
+  tbody.innerHTML = "";
+
+  orders.forEach(o => {
+    const tr = document.createElement("tr");
+
+    tr.innerHTML = `
+      <td>${o.ticker}</td>
+      <td>${o.side}</td>
+      <td>${new Date(o.execute_after).toLocaleString()}</td>
+      <td>${o.repeat_index}</td>
+      <td>
+        <button onclick="deleteQueuedOrder('${o.id}')">삭제</button>
+      </td>
+    `;
+
+    tbody.appendChild(tr);
+  });
+}
+async
+  function deleteQueuedOrder(id) {
+  if (!confirm("이 예약 주문을 삭제할까요?")) return;
+
+  const res = await fetch(`/api/queued-orders/${id}`, {
+    method: "DELETE"
+  });
+
+  if (!res.ok) {
+    alert("삭제 실패 (이미 실행 중일 수 있음)");
+    return;
+  }
+
+  loadQueuedOrders();
+}
+  
+async function deleteRepeatGroup(groupId) {
+  if (!confirm("이 반복 예약 전체를 취소할까요?")) return;
+
+  await fetch(`/api/queued-orders/group/${groupId}`, {
+    method: "DELETE"
+  });
+
+  loadQueuedOrders();
+}
 
 async function deleteReservedOrder(orderId) {
   if (!confirm("예약 주문을 삭제할까요?")) return;
@@ -328,6 +389,11 @@ async function deleteReservedOrder(orderId) {
 }
   
 document.addEventListener("DOMContentLoaded", loadReservedOrders);
+  
+document.addEventListener("DOMContentLoaded", () => {
+  loadWatchlist();      // 기존
+  loadQueuedOrders();  // 🔥 추가
+});
 
 async function loadData() {
   body.innerHTML = "<tr><td colspan='4' class='cell'>불러오는 중...</td></tr>";
