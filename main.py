@@ -42,6 +42,17 @@ if not SUPABASE_ANON_KEY:
 if SECRET_KEY == "change-this":
     raise RuntimeError("JWT_SECRET not set")
 
+ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
+ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
+
+if not ALPACA_API_KEY or not ALPACA_SECRET_KEY:
+    raise RuntimeError("Alpaca API key not set")
+
+alpaca_data = StockHistoricalDataClient(
+    ALPACA_API_KEY,
+    ALPACA_SECRET_KEY
+)
+
 # =====================
 # Supabase clients
 # =====================
@@ -179,9 +190,6 @@ def login(data: dict):
 # =====================
 @app.get("/api/queued-orders")
 def list_queued_orders(user: str = Depends(get_current_user)):
-    # =====================
-    # 🔧 CHANGED: 예약 주문 조회
-    # =====================
     res = (
         supabase_admin
         .table("queued_orders")
@@ -195,40 +203,37 @@ def list_queued_orders(user: str = Depends(get_current_user)):
             repeat_index
         """)
         .eq("user_id", user)
-        .in_("status", ["PENDING", "RUNNING"])
+        .eq("status", "PENDING")   # 🔥 실행 전 것만
         .order("execute_after")
         .execute()
     )
 
     rows = res.data or []
 
-    # =====================
-    # 🟢 NEW: repeat_group별 전체 개수 계산
-    # =====================
-    group_totals = {}
+    # 🔥 repeat_group별 전체 개수 계산
+    group_totals: dict[str, int] = {}
     for r in rows:
         g = r["repeat_group"]
         if g:
             group_totals[g] = group_totals.get(g, 0) + 1
 
-    # =====================
-    # 🟢 NEW: 프론트용 가공 필드 추가
-    # =====================
     result = []
     for r in rows:
         total = group_totals.get(r["repeat_group"], 1)
 
         result.append({
             **r,
-            # 🔥 프론트에서 그대로 쓰라고 문자열도 같이 내려줌
-            "repeat_total": total,
+
+            # 🔥 이것만 쓴다. 다른 개념 없음.
+            # 예: "1/40", "2/40"
             "repeat_label": (
-                f'{r["repeat_index"]}({"완" if r["status"] == "DONE" else ""})/{total}'
+                f'{r["repeat_index"]}/{total}'
                 if total > 1 else None
             )
         })
 
     return result
+
 
 def get_yahoo_quote(ticker: str) -> dict:
     """
@@ -760,38 +765,47 @@ def cron_execute_reservations(secret: str = Query(...)):
     if secret != os.getenv("CRON_SECRET"):
         raise HTTPException(403)
 
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc)
 
     res = (
         supabase_admin
-        .table("order_reservations")
+        .table("queued_orders")
         .select("*")
         .eq("status", "PENDING")
-        .lte("execute_at", now)
+        .lte("execute_after", now.isoformat())
         .execute()
     )
 
     for o in res.data or []:
         try:
-            side = "buy" if o["side"].startswith("BUY") else "sell"
-
             if not is_us_market_open():
                 continue
 
+            side = "buy" if o["side"].startswith("BUY") else "sell"
+
+            # 🔥 실행 시점에 가격 계산
+            preview = order_preview({
+                "side": o["side"],
+                "avg_price": o["avg_price"],
+                "current_price": resolve_prices(o["ticker"])["base_price"],
+                "seed": o["seed"],
+                "ticker": o["ticker"]
+            }, o["user_id"])
+
             order_overseas_stock(
                 ticker=o["ticker"],
-                price=float(o["price"]),
-                qty=int(o["qty"]),
+                price=preview["price"],
+                qty=preview["qty"],
                 side=side
             )
 
-            supabase_admin.table("order_reservations").update({
+            supabase_admin.table("queued_orders").update({
                 "status": "DONE",
-                "executed_at": now
+                "executed_at": now.isoformat()
             }).eq("id", o["id"]).execute()
 
         except Exception as e:
-            supabase_admin.table("order_reservations").update({
+            supabase_admin.table("queued_orders").update({
                 "status": "ERROR",
                 "error": str(e)
             }).eq("id", o["id"]).execute()
@@ -985,6 +999,53 @@ def chart_data(ticker: str, user=Depends(get_current_user)):
         # 🔥 뱃지
         "price_source": p["price_source"],
     }
+    
+def send_order_success_telegram(order: dict, executed_price: float, executed_qty: int, db):
+    total = get_repeat_total(db, order["repeat_group"])
+
+    executed_at = order.get("executed_at")
+    if executed_at:
+        executed_at = datetime.fromisoformat(executed_at)
+        executed_at_str = executed_at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        executed_at_str = "N/A"
+
+    message = (
+        "✅ 예약 주문 체결\n\n"
+        f"종목: {order['ticker']}\n"
+        f"구분: {order['side']}\n"
+        f"체결가: ${executed_price}\n"
+        f"수량: {executed_qty} 주\n"
+        f"매수액: ${executed_price * executed_qty:,.2f}\n\n"
+        f"진행률: {order['repeat_index']}/{total}\n"
+        f"실행 시각: {executed_at_str}"
+    )
+
+    send_telegram_message(message)
+
+
+def send_order_fail_telegram(order: dict, error_msg: str, db):
+    total = get_repeat_total(db, order["repeat_group"])
+
+    # 🔥 execute_after 안전 처리
+    execute_after = order.get("execute_after")
+    if execute_after:
+        execute_after = datetime.fromisoformat(execute_after)
+        execute_after_str = execute_after.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        execute_after_str = "N/A"
+
+    message = (
+        "❌ 예약 주문 실패\n\n"
+        f"종목: {order['ticker']}\n"
+        f"구분: {order['side']}\n"
+        f"사유: {error_msg}\n\n"
+        f"진행률: {order['repeat_index']}/{total}\n"
+        f"실행 예정 시각: {execute_after_str}"
+    )
+
+    send_telegram_message(message)
+
 
 @app.get("/chart-page", response_class=HTMLResponse)
 def chart_page(request: Request):
