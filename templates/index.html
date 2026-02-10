@@ -182,28 +182,16 @@
       <tr>
         <th>종목</th>
         <th>구분</th>
-        <th>가격</th>
-        <th>수량</th>
-        <th>실행시간</th>
+        <th>시작일</th>
+        <th>진행률</th>
+        <th>다음 실행일</th>
         <th></th>
       </tr>
     </thead>
     <tbody id="reserved-orders-body"></tbody>
   </table>
-  <table id="reservedTable">
-  <thead>
-    <tr>
-      <th>종목</th>
-      <th>구분</th>
-      <th>실행일시</th>
-      <th>회차</th>
-      <th></th>
-    </tr>
-  </thead>
-  <tbody></tbody>
-</table>
 </div>
- 
+
 <h1>📊 Watchlist</h1>
   
   <div id="pullIndicator">⬇️ 당겨서 새로고침</div>
@@ -258,7 +246,6 @@ async function login() {
 
   loadData();          // ✅ 추가
   loadReservedOrders(); // ✅ 추가
-  loadQueuedOrders();   // ✅ 추가
 }
 
 async function authFetch(url, options = {}) {
@@ -295,11 +282,7 @@ async function authFetch(url, options = {}) {
 const body = document.getElementById("tableBody");
 
 async function loadReservedOrders() {
-  const res = await fetch("/api/order/reserve", {
-    headers: {
-      "Authorization": "Bearer " + localStorage.getItem("token")
-    }
-  });
+  const res = await authFetch("/api/order/reservations");
   if (!res.ok) return;
 
   const data = await res.json();
@@ -320,84 +303,44 @@ async function loadReservedOrders() {
     tr.innerHTML = `
       <td>${o.ticker}</td>
       <td>${sideMap[o.side] ?? o.side}</td>
-      <td>${o.price}</td>
-      <td>${o.qty}</td>
-      <td>${new Date(o.execute_at).toLocaleString()}</td>
+      <td>${new Date(o.start_at).toLocaleString()}</td>
+      <td style="font-weight:600;">
+        ${o.done_count}(완) / ${o.repeat_count}
+      </td>
       <td>
-        <button onclick="deleteReservedOrder('${o.id}')">❌</button>
+        ${o.next_execute_at
+          ? new Date(o.next_execute_at).toLocaleString()
+          : "완료"}
+      </td>
+      <td>
+        <button onclick="cancelReservation('${o.id}')">❌</button>
       </td>
     `;
     tbody.appendChild(tr);
   });
 }
-  
-async function loadQueuedOrders() {
-  const res = await fetch("/api/queued-orders");
-  const orders = await res.json();
 
-  const tbody = document.querySelector("#reservedTable tbody");
-  tbody.innerHTML = "";
+async function cancelReservation(id) {
+  if (!confirm("이 예약을 전체 취소할까요?")) return;
 
-  orders.forEach(o => {
-    const tr = document.createElement("tr");
-
-    tr.innerHTML = `
-      <td>${o.ticker}</td>
-      <td>${o.side}</td>
-      <td>${new Date(o.execute_after).toLocaleString()}</td>
-      <td>${o.repeat_index}</td>
-      <td>
-        <button onclick="deleteQueuedOrder('${o.id}')">삭제</button>
-      </td>
-    `;
-
-    tbody.appendChild(tr);
-  });
-}
-async
-  function deleteQueuedOrder(id) {
-  if (!confirm("이 예약 주문을 삭제할까요?")) return;
-
-  const res = await fetch(`/api/queued-orders/${id}`, {
+  const res = await authFetch(`/api/order/reservations/${id}`, {
     method: "DELETE"
   });
 
   if (!res.ok) {
-    alert("삭제 실패 (이미 실행 중일 수 있음)");
+    alert("취소 실패");
     return;
   }
 
-  loadQueuedOrders();
-}
-  
-async function deleteRepeatGroup(groupId) {
-  if (!confirm("이 반복 예약 전체를 취소할까요?")) return;
-
-  await fetch(`/api/queued-orders/group/${groupId}`, {
-    method: "DELETE"
-  });
-
-  loadQueuedOrders();
-}
-
-async function deleteReservedOrder(orderId) {
-  if (!confirm("예약 주문을 삭제할까요?")) return;
-  await fetch(`/api/order/reserve/${orderId}`, {
-    method: "DELETE",
-    headers: {
-      "Authorization": "Bearer " + localStorage.getItem("token")
-    }
-  });
   loadReservedOrders();
 }
-  
-document.addEventListener("DOMContentLoaded", loadReservedOrders);
-  
+
 document.addEventListener("DOMContentLoaded", () => {
-  loadData();
-  loadQueuedOrders();
+  loadData();            // watchlist
+  loadReservedOrders();  // 예약 목록
 });
 
+  
 async function loadData() {
   body.innerHTML = "<tr><td colspan='4' class='cell'>불러오는 중...</td></tr>";
 
