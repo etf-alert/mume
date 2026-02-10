@@ -142,9 +142,11 @@ def run():
             # 🟢 NEW: 텔레그램 성공 알림
             send_order_success_telegram(
                 order=o,
-                executed_price=price,
-                executed_qty=qty,
-                db=supabase
+                executed_price=preview["price"],
+                executed_qty=preview["qty"],
+                executed_at=now,
+                kis_msg=kis_res.get("msg1"),   # 🔥 여기서 전달
+                db=supabase_admin
             )
 
             print("✅ done:", o["id"])
@@ -164,7 +166,7 @@ def run():
                 send_order_fail_telegram(
                     order=o,
                     error_msg=str(e),
-                    db=supabase
+                    db=supabase_admin
                 )
             else:
                 update["status"] = "PENDING"
