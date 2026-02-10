@@ -599,7 +599,6 @@ def calculate_wilder_rsi_series(series: pd.Series, period: int = 14):
 
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
-
     return rsi
     
 # =====================
@@ -934,12 +933,16 @@ def chart_data(ticker: str, user=Depends(get_current_user)):
     if df is None or df.empty:
         raise HTTPException(400, "no data")
 
-    close = df["Close"]
+    # 🔥 1️⃣ Adj Close 사용
+    close = df["Adj Close"]
     if isinstance(close, pd.DataFrame):
         close = close.iloc[:, 0]
-    close = close.astype(float)
 
+    close = close.astype(float).dropna()
+
+    # 🔥 2️⃣ RSI 계산
     rsi_series = calculate_wilder_rsi_series(close)
+
     history = [
         {
             "date": close.index[i].strftime("%Y-%m-%d"),
@@ -956,17 +959,14 @@ def chart_data(ticker: str, user=Depends(get_current_user)):
     return {
         "ticker": ticker,
         "history": history,
-
         # 🔥 기준 현재가
         "current_price": p["base_price"],
         "current_change": p["current_change"],
         "current_change_pct": p["current_change_pct"],
-
         # 🔥 시간외
         "display_price": p["display_price"],
         "after_change": p["after_change"],
         "after_change_pct": p["after_change_pct"],
-
         # 🔥 뱃지
         "price_source": p["price_source"],
     }
