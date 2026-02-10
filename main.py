@@ -978,7 +978,7 @@ def chart_data(ticker: str, user=Depends(get_current_user)):
         threads=False
     )
     if df is None or df.empty:
-    raise HTTPException(400, "no data")
+        raise HTTPException(400, "no data")
 
     # =========================
     # 1️⃣ 컬럼 구조 정규화
