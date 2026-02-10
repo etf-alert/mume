@@ -978,14 +978,45 @@ def chart_data(ticker: str, user=Depends(get_current_user)):
         threads=False
     )
     if df is None or df.empty:
-        raise HTTPException(400, "no data")
+    raise HTTPException(400, "no data")
 
-    # 🔥 1️⃣ Adj Close 사용
-    close = df["Adj Close"]
+    # =========================
+    # 1️⃣ 컬럼 구조 정규화
+    # =========================
+    if isinstance(df.columns, pd.MultiIndex):
+        # 보통 (price_type, ticker) 구조
+        # → price_type만 사용
+        df = df.copy()
+        df.columns = df.columns.get_level_values(0)
+
+    # =========================
+    # 2️⃣ 종가 컬럼 명시적 선택
+    # =========================
+    if "Adj Close" in df.columns:
+        close = df["Adj Close"]
+    elif "Close" in df.columns:
+        close = df["Close"]
+    else:
+        raise HTTPException(
+            500,
+            f"no close column: {df.columns.tolist()}"
+        )
+
+    # =========================
+    # 3️⃣ Series 보장
+    # =========================
     if isinstance(close, pd.DataFrame):
+        if close.shape[1] != 1:
+            raise HTTPException(
+                500,
+                f"ambiguous close columns: {close.columns.tolist()}"
+            )
         close = close.iloc[:, 0]
 
-    close = close.astype(float).dropna()
+    # =========================
+    # 4️⃣ 타입 / 결측 정리
+    # =========================
+    close = pd.to_numeric(close, errors="coerce").dropna()
 
     # 🔥 2️⃣ RSI 계산
     rsi_series = calculate_wilder_rsi_series(close)
