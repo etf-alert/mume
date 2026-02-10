@@ -181,35 +181,40 @@
       <div id="halfSplit" class="value">-</div>
     </div>
   </div>
-  <div class="box" style="margin-top:12px">
-    <button id="buyBtn" style="width:100%;padding:12px;font-size:18px;
-      font-weight:700;border-radius:10px;border:none;
-      background:#22c55e;color:#020617;">
-      🟢 매수
+<div class="box" style="margin-top:12px">
+
+  <!-- 1줄: 매수 / 예약매수 -->
+  <div style="display:flex; gap:8px; margin-bottom:8px;">
+    <button id="buyBtn"
+      style="flex:1;padding:12px;font-size:18px;font-weight:700;
+      border-radius:10px;border:none;background:#22c55e;color:#020617;">
+      ➕ 매수
     </button>
 
-    <div class="box" style="margin-top:12px">
-      <button id="reserveBuyBtn" style="width:100%;padding:12px;font-size:17px;
-        font-weight:700;border-radius:10px;border:none;
-        background:#38bdf8;color:#020617;">
-        ⏰ 예약 매수
-      </button>
+    <button id="reserveBuyBtn"
+      style="flex:1;padding:12px;font-size:17px;font-weight:700;
+      border-radius:10px;border:none;background:#38bdf8;color:#020617;">
+      ⏰ 예약 매수
+    </button>
+  </div>
 
-    <button id="sellBtn" style="width:100%;padding:12px;font-size:18px;
-      font-weight:700;border-radius:10px;border:none;
-      background:#f87171;color:#020617;margin-top:8px">
+  <!-- 2줄: 매도 / 예약매도 -->
+  <div style="display:flex; gap:8px;">
+    <button id="sellBtn"
+      style="flex:1;padding:12px;font-size:18px;font-weight:700;
+      border-radius:10px;border:none;background:#f87171;color:#020617;">
       🔴 매도
     </button>
 
-    <button id="reserveSellBtn" style="width:100%;padding:12px;font-size:17px;
-        font-weight:700;border-radius:10px;border:none;
-        background:#fca5a5;color:#020617;margin-top:8px">
-        ⏰ 예약 매도
-      </button>
-    </div>   
-  </div>  
-</div>
+    <button id="reserveSellBtn"
+      style="flex:1;padding:12px;font-size:17px;font-weight:700;
+      border-radius:10px;border:none;background:#fca5a5;color:#020617;">
+      ⏰ 예약 매도
+    </button>
+  </div>
 
+</div>
+ 
 <script>
 /* ===== 기본 설정 ===== */
 const avgStatusEl = document.getElementById("avgStatus");
