@@ -4,7 +4,7 @@ from supabase import create_client
 from kis_api import order_overseas_stock, get_overseas_avg_price
 from price_api import get_current_price
 
-SUPABASE_URL = "https://xxxx.supabase.co"
+SUPABASE_URL = "SUPABASE_URL"
 SUPABASE_KEY = "SERVICE_ROLE_KEY"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
