@@ -323,11 +323,14 @@ function authFetch(url, options = {}) {
     throw new Error("No token");
   }
 
-  options.headers = {
-    ...(options.headers || {}),
-    "Authorization": "Bearer " + token,
-    "Content-Type": "application/json"
-  };
+  options.headers = Object.assign(
+    {},
+    options.headers || {},
+    {
+      "Authorization": "Bearer " + token,
+      "Content-Type": "application/json"
+    }
+  );
 
   return fetch(url, options);
 }
