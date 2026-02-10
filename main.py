@@ -111,8 +111,14 @@ def get_next_n_trading_days(start_date, n):
     )
     return list(schedule.index[:n])
 
-def calculate_execute_at_from_market_open(execute_after_minutes: int):
-    market_open = next_market_open()  # ✅ 네가 이미 가진 함수
+def calculate_execute_at_from_market_open(
+    execute_after_minutes: int,
+    base_date: date | None = None
+):
+    if base_date:
+        market_open = next_market_open(base_date)
+    else:
+        market_open = next_market_open()
 
     if market_open is None:
         raise ValueError("다음 정규장 시작 시간을 찾을 수 없습니다")
@@ -424,6 +430,7 @@ async def reserve_order(
 
     order_id = body["order_id"]
     minutes = int(body["execute_after_minutes"])
+    repeat_days = int(body.get("repeat_days", 1))   # 🟢 NEW
 
     order = ORDER_CACHE.get(order_id)
     if not order:
@@ -432,33 +439,55 @@ async def reserve_order(
     if minutes < 0 or minutes > 60 * 6:
         raise HTTPException(400, "예약 시간은 0~360분만 가능")
 
-    exists = (
-        supabase_admin
-        .table("order_reservations")
-        .select("id")
-        .eq("id", order_id)
-        .execute()
-    )
+    if repeat_days < 1 or repeat_days > 120:        # 🟢 NEW (안전장치)
+        raise HTTPException(400, "repeat_days 범위 오류")
 
-    if exists.data:
-        raise HTTPException(400, "이미 예약된 주문입니다")
+    # ❌ 기존 order_reservations 중복 체크 제거
+    # 반복 예약은 여러 row 생성이기 때문
 
-    execute_at = calculate_execute_at_from_market_open(minutes)
+    # =========================
+    # 🟢 NEW: 영업일 계산
+    # =========================
+    start_date = datetime.now(ny_tz).date()
+    trading_days = get_next_n_trading_days(start_date, repeat_days)
 
-    if execute_at <= datetime.now(timezone.utc):
-        raise HTTPException(400, "예약 시간이 이미 지났습니다")  
+    repeat_group = str(uuid4())  # 🟢 NEW
+    rows = []
 
+    for idx, day in enumerate(trading_days, start=1):
+        execute_at = calculate_execute_at_from_market_open(
+            minutes,
+            base_date=day        # 🔧 CHANGED
+        )
+
+        if execute_at <= datetime.now(timezone.utc):
+            continue
+
+        rows.append({
+            "user_id": user,
+            "ticker": order["ticker"],
+            "side": order["side"],
+
+            # ❌ price / qty 저장 안 함
+            # 🟢 실행 시점에 계산하기 위함
+            "seed": body["seed"],             # 🟢 NEW
+            "avg_price": body["avg_price"],   # 🟢 NEW
+
+            "execute_after": execute_at.astimezone(timezone.utc).isoformat(),
+            "status": "PENDING",
+
+            "repeat_group": repeat_group,     # 🟢 NEW
+            "repeat_index": idx               # 🟢 NEW
+        })
+
+    if not rows:
+        raise HTTPException(400, "유효한 예약 날짜 없음")
+
+    # =========================
+    # 🟢 NEW: 다건 insert
+    # =========================
     try:
-        supabase_admin.table("order_reservations").insert({
-        "id": order_id,
-        "user_id": user,
-        "ticker": order["ticker"],
-        "side": order["side"],
-        "price": order["price"],
-        "qty": order["qty"],
-        "execute_at": execute_at.astimezone(timezone.utc).isoformat(),
-        "status": "PENDING"
-    }).execute()
+        supabase_admin.table("queued_orders").insert(rows).execute()
     except Exception as e:
         raise HTTPException(500, f"예약 저장 실패: {e}")
 
@@ -466,10 +495,10 @@ async def reserve_order(
 
     return {
         "status": "reserved",
-        "execute_at": execute_at.isoformat(),
-        "qty": order["qty"]
+        "repeat_days": len(rows),
+        "first_execute_at": rows[0]["execute_after"],
+        "repeat_group": repeat_group
     }
-
 
 # =====================
 # FastAPI
