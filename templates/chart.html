@@ -188,21 +188,25 @@
       🟢 매수
     </button>
 
-    <button id="reserveBtn" style="width:100%;padding:12px;font-size:18px;
-      font-weight:700;border-radius:10px;border:none;
-      background:#38bdf8;color:#020617;margin-top:8px">
-      ⏰ 예약 주문
-    </button>
+    <div class="box" style="margin-top:12px">
+      <button id="reserveBuyBtn" style="width:100%;padding:12px;font-size:17px;
+        font-weight:700;border-radius:10px;border:none;
+        background:#38bdf8;color:#020617;">
+        ⏰ 예약 매수
+      </button>
 
-
-
-
-    
     <button id="sellBtn" style="width:100%;padding:12px;font-size:18px;
       font-weight:700;border-radius:10px;border:none;
       background:#f87171;color:#020617;margin-top:8px">
       🔴 매도
     </button>
+
+    <button id="reserveSellBtn" style="width:100%;padding:12px;font-size:17px;
+        font-weight:700;border-radius:10px;border:none;
+        background:#fca5a5;color:#020617;margin-top:8px">
+        ⏰ 예약 매도
+      </button>
+    </div>   
   </div>  
 </div>
 
@@ -570,8 +574,19 @@ async function reserveOrder(side) {
   try {
     const seed = getSeed();
     const avg  = getAvg();
-    if (!seed || !avg || !latestPrice) {
+
+    if (!latestPrice) {
+      alert("가격 정보 없음");
+      return;
+    }
+
+    if (side !== "SELL" && (!seed || !avg)) {
       alert("시드 / 평단가 입력 필요");
+      return;
+    }
+
+    if (side === "SELL" && holdQty <= 0) {
+      alert("매도 가능한 수량이 없습니다");
       return;
     }
 
@@ -596,7 +611,11 @@ async function reserveOrder(side) {
       })
     });
 
-    if (!preview.ok) throw new Error("preview 실패");
+    if (!preview.ok) {
+      const t = await preview.text();
+      throw new Error(t);
+    }
+
     const data = await preview.json();
 
     /* 2️⃣ reserve */
@@ -609,16 +628,19 @@ async function reserveOrder(side) {
     });
 
     if (!reserve.ok) {
-      const e = await reserve.text();
-      throw new Error(e);
+      const t = await reserve.text();
+      throw new Error(t);
     }
 
     const result = await reserve.json();
+
     alert(
       `⏰ 예약 완료\n\n` +
       `종목: ${ticker}\n` +
+      `구분: ${side}\n` +
+      `가격: $${data.price}\n` +
       `수량: ${data.qty}\n` +
-      `실행 시각: ${result.execute_at}`
+      `실행: ${new Date(result.execute_at).toLocaleString()}`
     );
 
   } catch (e) {
@@ -702,11 +724,16 @@ async function sendOrder(side, mode = "DEFAULT") {
   }
 }
 
-document.getElementById("reserveBtn").onclick = () => {
-  reserveOrder("BUY_AVG"); // 필요하면 BUY_MARKET / SELL 분리 가능
+// 예약 매수 → 평단가 기준 LOC
+document.getElementById("reserveBuyBtn").onclick = () => {
+  reserveOrder("BUY_AVG");
 };
 
-  
+// 예약 매도 → 평단가 +10%
+document.getElementById("reserveSellBtn").onclick = () => {
+  reserveOrder("SELL");
+};
+
 document.getElementById("buyBtn").onclick = async () => {
   await sendOrder("BUY_MARKET");
   await sendOrder("BUY_AVG");
