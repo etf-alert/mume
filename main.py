@@ -382,15 +382,18 @@ def get_yf_daily_closes(ticker: str, period="6mo") -> list[float]:
 # =====================
 # 🔧 FIX: order_preview 로직 분리 (순수 함수)
 # =====================
+# =====================
+# 🔧 FIX: 순수 가격/수량 계산 함수 (API / Cron 공용)
+# =====================
 def build_order_preview(data: dict):
-    price_type = None
-    message = None
-
     side = data["side"]
     avg = float(data["avg_price"])
     cur = float(data["current_price"])
     seed = float(data["seed"])
     ticker = data["ticker"]
+
+    price_type = None
+    message = None
 
     if side == "BUY_MARKET":
         price = round(min(avg * 1.05, cur * 1.15), 2)
@@ -410,15 +413,16 @@ def build_order_preview(data: dict):
         if qty <= 0:
             raise ValueError("매도 가능 수량 없음")
 
-        target_price = round(avg * 1.10, 2)
-        if cur > target_price:
+        target = round(avg * 1.10, 2)
+        if cur > target:
             price = round(cur, 2)
             price_type = "MARKET_BETTER"
-            message = "현재가가 목표가보다 높아 현재가로 매도"
+            message = "현재가로 매도"
         else:
-            price = target_price
+            price = target
             price_type = "TARGET"
-            message = "목표가(평단+10%)로 매도"
+            message = "목표가 매도"
+
     else:
         raise ValueError("invalid side")
 
@@ -431,6 +435,7 @@ def build_order_preview(data: dict):
         "price_type": price_type,
         "message": message
     }
+
 
 @app.post("/api/order/preview")
 def order_preview(
@@ -747,6 +752,9 @@ def cron_save(secret: str = Query(...)):
 # =====================
 # Cron 실행 (장 시작 시)
 # =====================
+# =====================
+# 🔥 Cron 실행 (장 시작 시)
+# =====================
 @app.post("/cron/execute-reservations")
 def cron_execute_reservations(secret: str = Query(...)):
     if secret != os.getenv("CRON_SECRET"):
@@ -768,18 +776,19 @@ def cron_execute_reservations(secret: str = Query(...)):
             if not is_us_market_open():
                 continue
 
-            side = "buy" if o["side"].startswith("BUY") else "sell"
+            # 🔧 FIX: 현재가 계산
+            current_price = resolve_prices(o["ticker"])["base_price"]
 
-            # 🔥 실행 시점에 가격 계산
-
-            # 🔧 FIX: cron에서는 API 말고 순수 함수 사용
+            # 🔧 FIX: 순수 함수 사용
             preview = build_order_preview({
                 "side": o["side"],
                 "avg_price": o["avg_price"],
-                "current_price": resolve_prices(o["ticker"])["base_price"],
+                "current_price": current_price,
                 "seed": o["seed"],
                 "ticker": o["ticker"]
-            }, o["user_id"])
+            })
+
+            side = "buy" if o["side"].startswith("BUY") else "sell"
 
             order_overseas_stock(
                 ticker=o["ticker"],
@@ -788,16 +797,18 @@ def cron_execute_reservations(secret: str = Query(...)):
                 side=side
             )
 
+            # 🔧 FIX: executed_at 명확히 저장
             supabase_admin.table("queued_orders").update({
                 "status": "DONE",
                 "executed_at": now.isoformat()
             }).eq("id", o["id"]).execute()
 
-             # 🔥 🔥 🔥 텔레그램 성공 알림
+            # 🟢 NEW: executed_at 직접 전달
             send_order_success_telegram(
                 order=o,
                 executed_price=preview["price"],
                 executed_qty=preview["qty"],
+                executed_at=now,
                 db=supabase_admin
             )
 
@@ -807,7 +818,6 @@ def cron_execute_reservations(secret: str = Query(...)):
                 "error": str(e)
             }).eq("id", o["id"]).execute()
 
-            # 🔥 🔥 🔥 텔레그램 실패 알림
             send_order_fail_telegram(
                 order=o,
                 error_msg=str(e),
@@ -815,6 +825,7 @@ def cron_execute_reservations(secret: str = Query(...)):
             )
 
     return {"status": "ok"}
+
 
 # =====================
 # 🔥 예약 주문 삭제 API
@@ -1007,14 +1018,18 @@ def chart_data(ticker: str, user=Depends(get_current_user)):
         "price_source": p["price_source"],
     }
     
-def send_order_success_telegram(order: dict, executed_price: float, executed_qty: int, db):
+# =====================
+# 🔧 FIX: executed_at 명시적으로 받기
+# =====================
+def send_order_success_telegram(
+    order: dict,
+    executed_price: float,
+    executed_qty: int,
+    executed_at: datetime,
+    db
+):
     total = get_repeat_total(db, order["repeat_group"])
-    executed_at = order.get("executed_at")
-    if executed_at:
-        executed_at = datetime.fromisoformat(executed_at)
-        executed_at_str = executed_at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
-    else:
-        executed_at_str = "N/A"
+    executed_at_str = executed_at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
 
     message = (
         "✅ 예약 주문 체결\n\n"
@@ -1026,9 +1041,7 @@ def send_order_success_telegram(order: dict, executed_price: float, executed_qty
         f"진행률: {order['repeat_index']}/{total}\n"
         f"실행 시각: {executed_at_str}"
     )
-
     send_telegram_message(message)
-
 
 def send_order_fail_telegram(order: dict, error_msg: str, db):
     total = get_repeat_total(db, order["repeat_group"])
@@ -1051,7 +1064,6 @@ def send_order_fail_telegram(order: dict, error_msg: str, db):
     )
 
     send_telegram_message(message)
-
 
 @app.get("/chart-page", response_class=HTMLResponse)
 def chart_page(request: Request):
