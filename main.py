@@ -579,15 +579,28 @@ WATCHLIST = load_watchlist()
 # RSI (wilder)
 # =====================
 def calculate_wilder_rsi_series(series: pd.Series, period: int = 14):
+    series = series.dropna()
+
     delta = series.diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
-    # Wilder smoothing (EMA with alpha = 1/period)
-    avg_gain = gain.ewm(alpha=1/period, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1/period, adjust=False).mean()
+
+    avg_gain = gain.ewm(
+        alpha=1/period,
+        adjust=False,
+        min_periods=period   # 🔥 중요
+    ).mean()
+
+    avg_loss = loss.ewm(
+        alpha=1/period,
+        adjust=False,
+        min_periods=period   # 🔥 중요
+    ).mean()
+
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
-    return rsi    
+
+    return rsi
     
 # =====================
 # Finviz RSI (Cron용)
