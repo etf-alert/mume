@@ -1,48 +1,53 @@
 # cron_execute_orders.py
-import sqlite3
 from datetime import datetime, timezone
-
+from supabase import create_client
 from kis_api import order_overseas_stock
-from price_api import get_current_price   # 🟢 신규: 현재가 조회
+from price_api import get_current_price
 
-DB_FILE = "rsi_history.db"
+# =========================
+# 🔐 Supabase 설정
+# =========================
+SUPABASE_URL = "https://xxxx.supabase.co"
+SUPABASE_KEY = "SERVICE_ROLE_KEY"  # ⚠️ 반드시 service_role
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def run():
-    conn = sqlite3.connect(DB_FILE, timeout=30)
-    conn.row_factory = sqlite3.Row
-    cur = conn.cursor()
+    now = datetime.now(timezone.utc).isoformat()
 
-    now = datetime.now(timezone.utc)
+    # =========================
+    # 1️⃣ 실행 대상 주문 조회
+    # =========================
+    res = (
+        supabase
+        .table("queued_orders")
+        .select("*")
+        .eq("status", "PENDING")
+        .lte("execute_after", now)
+        .execute()
+    )
 
-    rows = cur.execute("""
-        SELECT *
-        FROM queued_orders
-        WHERE status = 'PENDING'
-    """).fetchall()
+    orders = res.data or []
+    print(f"▶ ready orders: {len(orders)}")
 
-    ready = []
-    for o in rows:
-        execute_after = datetime.fromisoformat(o["execute_after"])
-        if execute_after <= now:
-            ready.append(o)
+    for o in orders:
+        # =========================
+        # 2️⃣ 실행 락 (PENDING → RUNNING)
+        # =========================
+        lock = (
+            supabase
+            .table("queued_orders")
+            .update({"status": "RUNNING"})
+            .eq("id", o["id"])
+            .eq("status", "PENDING")
+            .execute()
+        )
 
-    print(f"▶ ready orders: {len(ready)}")
-
-    for o in ready:
-        # 🔒 실행 락 (유지)
-        cur.execute("""
-            UPDATE queued_orders
-            SET status = 'RUNNING'
-            WHERE id = ? AND status = 'PENDING'
-        """, (o["id"],))
-        conn.commit()
-
-        if cur.rowcount == 0:
-            continue
+        if not lock.data:
+            continue  # 다른 워커가 잡음
 
         try:
             # =========================
-            # 🟢 1️⃣ 실행 시점 현재가 조회
+            # 3️⃣ 실행 시점 현재가 조회
             # =========================
             current_price = get_current_price(o["ticker"])
             if not current_price or current_price <= 0:
@@ -52,7 +57,7 @@ def run():
             seed = o["seed"]
 
             # =========================
-            # 🟢 2️⃣ 실행 시점 가격 계산
+            # 4️⃣ 실행 시점 가격 계산
             # =========================
             half_split = (seed / 40) / 2
 
@@ -61,24 +66,21 @@ def run():
                     avg_price * 1.05,
                     current_price * 1.15
                 )
-
             elif o["side"] == "BUY_MARKET":
                 price = current_price * 1.15
-
             elif o["side"] == "SELL":
                 price = avg_price * 1.10
-
             else:
                 raise ValueError(f"unknown side: {o['side']}")
 
+            price = round(price, 2)
+
             # =========================
-            # 🟢 3️⃣ 수량 계산 (여기서!)
+            # 5️⃣ 수량 계산
             # =========================
             qty = int(half_split // price)
             if qty <= 0:
                 raise ValueError("qty <= 0")
-
-            price = round(price, 2)
 
             print(
                 "▶ executing:",
@@ -90,7 +92,7 @@ def run():
             )
 
             # =========================
-            # 🟢 4️⃣ 실제 주문 실행
+            # 6️⃣ 실제 주문 실행
             # =========================
             order_overseas_stock(
                 ticker=o["ticker"],
@@ -99,27 +101,28 @@ def run():
                 side="buy" if o["side"].startswith("BUY") else "sell"
             )
 
-            # 🟢 성공 시 삭제
-            cur.execute(
-                "DELETE FROM queued_orders WHERE id = ?",
-                (o["id"],)
-            )
-            conn.commit()
+            # =========================
+            # 7️⃣ 성공 → 삭제
+            # =========================
+            supabase \
+                .table("queued_orders") \
+                .delete() \
+                .eq("id", o["id"]) \
+                .execute()
 
             print("✅ done:", o["id"])
 
         except Exception as e:
-            # 🔴 실패 시 다시 PENDING
-            cur.execute("""
-                UPDATE queued_orders
-                SET status = 'PENDING'
-                WHERE id = ?
-            """, (o["id"],))
-            conn.commit()
+            # =========================
+            # 🔴 실패 → PENDING 복구
+            # =========================
+            supabase \
+                .table("queued_orders") \
+                .update({"status": "PENDING"}) \
+                .eq("id", o["id"]) \
+                .execute()
 
             print("❌ order failed:", o["id"], str(e))
-
-    conn.close()
 
 
 if __name__ == "__main__":
