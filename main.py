@@ -164,6 +164,9 @@ def login(data: dict):
 # =====================
 @app.get("/api/queued-orders")
 def list_queued_orders(user: str = Depends(get_current_user)):
+    # =====================
+    # 🔧 CHANGED: 예약 주문 조회
+    # =====================
     res = (
         supabase_admin
         .table("queued_orders")
@@ -181,7 +184,36 @@ def list_queued_orders(user: str = Depends(get_current_user)):
         .order("execute_after")
         .execute()
     )
-    return res.data
+
+    rows = res.data or []
+
+    # =====================
+    # 🟢 NEW: repeat_group별 전체 개수 계산
+    # =====================
+    group_totals = {}
+    for r in rows:
+        g = r["repeat_group"]
+        if g:
+            group_totals[g] = group_totals.get(g, 0) + 1
+
+    # =====================
+    # 🟢 NEW: 프론트용 가공 필드 추가
+    # =====================
+    result = []
+    for r in rows:
+        total = group_totals.get(r["repeat_group"], 1)
+
+        result.append({
+            **r,
+            # 🔥 프론트에서 그대로 쓰라고 문자열도 같이 내려줌
+            "repeat_total": total,
+            "repeat_label": (
+                f'{r["repeat_index"]}({"완" if r["status"] == "DONE" else ""})/{total}'
+                if total > 1 else None
+            )
+        })
+
+    return result
 
 def get_yahoo_quote(ticker: str) -> dict:
     """
