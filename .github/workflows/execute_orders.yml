@@ -2,7 +2,7 @@ name: Execute Queued Orders
 
 on:
   schedule:
-    - cron: "*/1 * * * *"   # ⏱️ 매 1분마다
+    - cron: "*/2 * * * *"   # ⏱️ 매 1분마다
   workflow_dispatch: {}     # 수동 실행 (테스트용)
 
 jobs:
