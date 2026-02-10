@@ -595,7 +595,7 @@ async function reserveOrder(side) {
       return;
     }
 
-    const minutes = prompt("몇 분 뒤 실행할까요? (0~360)");
+    const minutes = prompt("개장 후 몇 분 뒤 실행할까요? (0~360)");
     if (minutes === null) return;
 
     const m = parseInt(minutes);
