@@ -10,6 +10,7 @@ import time
 from pydantic import BaseModel
 from bs4 import BeautifulSoup
 from supabase import create_client, ClientOptions
+import pytz
 import json
 import os
 import yfinance as yf
