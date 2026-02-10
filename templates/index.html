@@ -336,10 +336,12 @@ async function cancelReservation(id) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  loadData();            // watchlist
-  loadReservedOrders();  // 예약 목록
+  if (localStorage.getItem("token")) {
+    document.getElementById("login-box").style.display = "none";
+    loadData();
+    loadReservedOrders();
+  }
 });
-
   
 async function loadData() {
   body.innerHTML = "<tr><td colspan='4' class='cell'>불러오는 중...</td></tr>";
@@ -419,13 +421,6 @@ async function loadData() {
     body.appendChild(tr);
   });
 }
-
-window.onload = () => {
-  if (localStorage.getItem("token")) {
-    document.getElementById("login-box").style.display = "none";
-    loadData();
-  }
-};
 
 function deleteTicker(ticker) {
   if (!confirm(`${ticker} 삭제할까?`)) return;
