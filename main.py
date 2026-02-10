@@ -158,7 +158,31 @@ def login(data: dict):
         samesite="lax"
     )
     return res
-     
+
+# =====================
+# 🔥 예약 주문 목록 조회 (index용)
+# =====================
+@app.get("/api/queued-orders")
+def list_queued_orders(user: str = Depends(get_current_user)):
+    res = (
+        supabase_admin
+        .table("queued_orders")
+        .select("""
+            id,
+            ticker,
+            side,
+            execute_after,
+            status,
+            repeat_group,
+            repeat_index
+        """)
+        .eq("user_id", user)
+        .in_("status", ["PENDING", "RUNNING"])
+        .order("execute_after")
+        .execute()
+    )
+    return res.data
+
 def get_yahoo_quote(ticker: str) -> dict:
     """
     Returns:
@@ -736,6 +760,47 @@ def delete_reserved_order(
         raise HTTPException(404, "예약 주문 없음 또는 삭제 불가")
     return {"deleted": order_id}
 
+# =====================
+# 🔥 예약 주문 1건 삭제
+# =====================
+@app.delete("/api/queued-orders/{order_id}")
+def delete_queued_order(
+    order_id: str,
+    user: str = Depends(get_current_user)
+):
+    res = (
+        supabase_admin
+        .table("queued_orders")
+        .delete()
+        .eq("id", order_id)
+        .eq("user_id", user)
+        .eq("status", "PENDING")  # 🔒 실행 전만 삭제
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(404, "삭제 불가")
+    return {"deleted": order_id}
+
+# =====================
+# 🔥 repeat_group 전체 삭제
+# =====================
+@app.delete("/api/queued-orders/group/{group_id}")
+def delete_repeat_group(
+    group_id: str,
+    user: str = Depends(get_current_user)
+):
+    res = (
+        supabase_admin
+        .table("queued_orders")
+        .delete()
+        .eq("repeat_group", group_id)
+        .eq("user_id", user)
+        .eq("status", "PENDING")
+        .execute()
+    )
+    return {
+        "deleted_count": len(res.data or [])
+    }
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
