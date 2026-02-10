@@ -93,10 +93,6 @@ ny_tz = pytz.timezone("US/Eastern")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-seed = body.get("seed")
-if seed is None:
-    raise HTTPException(400, "seed is required")
-
 def send_telegram_message(text: str):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
@@ -503,6 +499,9 @@ async def reserve_order(
     user: str = Depends(get_current_user)
 ):
     body = await request.json()
+    seed = body.get("seed")
+    if seed is None:
+        raise HTTPException(400, "seed is required")
 
     order_id = body["order_id"]
     minutes = int(body["execute_after_minutes"])
