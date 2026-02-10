@@ -3,9 +3,14 @@ from datetime import datetime, timezone, timedelta
 from supabase import create_client
 from kis_api import order_overseas_stock, get_overseas_avg_price
 from price_api import get_current_price
+import os
 
-SUPABASE_URL = "SUPABASE_URL"
-SUPABASE_KEY = "SERVICE_ROLE_KEY"
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("Supabase env not set")
+
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 MAX_RETRY = 3  # 🟢 NEW
