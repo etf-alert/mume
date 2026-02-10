@@ -324,9 +324,11 @@ const body = document.getElementById("tableBody");
 async function loadReservedOrders() {
   const res = await fetch("/api/order/reserve", {
     headers: {
-      "Authorization": "Bearer " + localStorage.getItem("access_token")
+      "Authorization": "Bearer " + localStorage.getItem("token")
     }
   });
+  if (!res.ok) return;
+
   const data = await res.json();
   const tbody = document.getElementById("reserved-orders-body");
   tbody.innerHTML = "";
