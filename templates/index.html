@@ -160,55 +160,10 @@
       z-index: 9999;
       transition: top 0.2s;
     }
-    /* =========================
-   장전 / 대기 주문 테이블
-   ========================= */
-    #queued-orders table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;            /* ✅ 전체 글씨 크기 줄이기 */
-    }
-
-    #queued-orders th,
-    #queued-orders td {
-      padding: 6px 4px;           /* ✅ 셀 패딩 줄이기 */
-      text-align: center;
-    }
-
-    #queued-orders th {
-      font-size: 12px;
-      color: #93c5fd;
-      background: #020617;
-    }
-
-    #queued-orders td {
-      font-size: 13px;
-    }
-
-    /* 삭제 버튼 */
-    #queued-orders button {
-      font-size: 12px;
-      padding: 4px 6px;
-      border-radius: 4px;
-      background: none;
-      border: 1px solid #ef4444;
-      color: #ef4444;
-      cursor: pointer;
-    }
-
-    #queued-orders button:active {
-      background: #ef4444;
-      color: white;
-    }
-    
-    #queued-orders h3 {
-      font-size: 14px;
-      margin-bottom: 6px;
-    }
   </style>
 </head>
 <body>
-  
+
 <div id="login-box">
   <h3>로그인</h3>
   <input id="login-id" placeholder="ID" />
@@ -241,8 +196,6 @@
   
   <div id="pullIndicator">⬇️ 당겨서 새로고침</div>
   
-<div id="queued-orders" style="margin-top:20px;"></div>
-
   <div class="add-box">
     <input id="tickerInput" placeholder="티커 입력 (예: AAPL)" />
     <button onclick="addTicker()">추가</button>
@@ -265,6 +218,11 @@
 </div>
 
 <script>
+  const sideMap = {
+    BUY_AVG: "매수",
+    SELL: "매도"
+  };
+  
 async function login() {
   const id = document.getElementById("login-id").value;
   const pw = document.getElementById("login-pw").value;
@@ -333,11 +291,20 @@ async function loadReservedOrders() {
   const tbody = document.getElementById("reserved-orders-body");
   tbody.innerHTML = "";
 
+  if (data.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" class="cell">예약된 주문 없음</td>
+      </tr>
+    `;
+    return;
+  }
+
   data.forEach(o => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${o.ticker}</td>
-      <td>${o.side}</td>
+      <td>${sideMap[o.side] ?? o.side}</td>
       <td>${o.price}</td>
       <td>${o.qty}</td>
       <td>${new Date(o.execute_at).toLocaleString()}</td>
@@ -354,79 +321,13 @@ async function deleteReservedOrder(orderId) {
   await fetch(`/api/order/reserve/${orderId}`, {
     method: "DELETE",
     headers: {
-      "Authorization": "Bearer " + localStorage.getItem("access_token")
+      "Authorization": "Bearer " + localStorage.getItem("token")
     }
   });
   loadReservedOrders();
 }
-
-document.addEventListener("DOMContentLoaded", loadReservedOrders);
-
-async function loadQueuedOrders() {
-    let res;
-    try {
-        res = await authFetch("/api/queued-orders");
-    } catch (e) {
-        alert("로그인이 필요합니다");
-        return;
-    }
-
-    if (!res.ok) {
-        alert("장전 주문 조회 실패");
-        return;
-    }
-
-    const data = await res.json();
-    const box = document.getElementById("queued-orders");
-
-    if (!data.orders || data.orders.length === 0) {
-        box.innerHTML = "<p>대기 중인 주문 없음</p>";
-        return;
-    }
-
-    box.innerHTML = `
-        <h3>📌 장전 / 대기 주문</h3>
-        <table border="1" cellpadding="6">
-            <tr>
-                <th>Ticker</th>
-                <th>Side</th>
-                <th>Price</th>
-                <th>Qty</th>
-                <th>실행 시각</th>
-                <th></th>
-            </tr>
-            ${data.orders.map(o => `
-                <tr>
-                    <td>${o.ticker}</td>
-                    <td>${o.side}</td>
-                    <td>${o.price}</td>
-                    <td>${o.qty}</td>
-                    <td>${o.execute_after}</td>
-                    <td>
-                        <button onclick="deleteQueuedOrder('${o.id}')">
-                            ❌
-                        </button>
-                    </td>
-                </tr>
-            `).join("")}
-        </table>
-    `;
-}
-
-async function deleteQueuedOrder(orderId) {
-    if (!confirm("이 주문을 삭제할까요?")) return;
   
-    const res = await authFetch(`/api/queued-orders/${orderId}`, {
-        method: "DELETE"
-    });
-
-    if (res.ok) {
-        alert("삭제됨");
-        loadQueuedOrders();
-    } else {
-        alert("삭제 실패");
-    }
-}
+document.addEventListener("DOMContentLoaded", loadReservedOrders);
 
 async function loadData() {
   body.innerHTML = "<tr><td colspan='4' class='cell'>불러오는 중...</td></tr>";
@@ -448,7 +349,7 @@ async function loadData() {
 
   const data = await res.json();
   const items = data.items ?? [];
-
+  
   if (items.length === 0) {
     body.innerHTML =
       "<tr><td colspan='4' class='cell'>데이터 없음</td></tr>";
@@ -511,7 +412,6 @@ window.onload = () => {
   if (localStorage.getItem("token")) {
     document.getElementById("login-box").style.display = "none";
     loadData();
-    loadQueuedOrders();   // ✅ 자동 표시
   }
 };
 
