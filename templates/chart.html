@@ -442,6 +442,9 @@ authFetch(`/api/avg-price/${ticker}`)
   });
 
 
+let priceChart = null;
+let rsiChart = null;
+
 /* ===== 차트 ===== */
 function drawCharts() {
   const xTick = (_, i) => {
@@ -451,11 +454,8 @@ function drawCharts() {
     return `${String(d.getFullYear()).slice(2)}.${d.getMonth() + 1}`;
   };
 
-  let priceChart, rsiChart;
-
-  function drawCharts() {
-    if (priceChart) priceChart.destroy();
-    if (rsiChart) rsiChart.destroy();
+  if (priceChart) priceChart.destroy();
+  if (rsiChart) rsiChart.destroy();
 
   priceChart = new Chart(priceChartEl, {
     type: "line",
@@ -471,9 +471,7 @@ function drawCharts() {
     },
     options: {
       plugins: {
-        legend: {
-          labels: { color: "#e5e7eb" }
-        }
+        legend: { labels: { color: "#e5e7eb" } }
       },
       scales: {
         x: {
@@ -504,9 +502,7 @@ function drawCharts() {
     },
     options: {
       plugins: {
-        legend: {
-          labels: { color: "#e5e7eb" }
-        }
+        legend: { labels: { color: "#e5e7eb" } }
       },
       scales: {
         x: {
@@ -525,7 +521,7 @@ function drawCharts() {
     }
   });
 }
-  
+
 function openReserveModal() {
   return new Promise(resolve => {
     const modal = document.getElementById("reserveModal");
@@ -752,16 +748,6 @@ async function reserveOrder(side) {
 }
   
 let ordering = false;
-
-async function reserveOrder(side) {
-  if (ordering) return;
-  ordering = true;
-  try {
-    ...
-  } finally {
-    ordering = false;
-  }
-}
 
 async function sendOrder(side, mode = "DEFAULT") {
   try {
