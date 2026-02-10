@@ -56,14 +56,19 @@ def is_us_market_open(now=None):
     return open_time <= now < close_time
 
 
-def next_market_open():
-    now = datetime.now(ny_tz)
+def next_market_open(base_date=None):
+    if base_date is None:
+        base_date = datetime.now(ny_tz).date()
+    elif isinstance(base_date, datetime):
+        base_date = base_date.date()
+
     schedule = nyse.schedule(
-        start_date=now.date(),
-        end_date=now.date() + timedelta(days=7)
+        start_date=base_date,
+        end_date=base_date + timedelta(days=7)
     )
 
     if schedule.empty:
         return None
 
     return schedule.iloc[0]["market_open"].to_pydatetime()
+
