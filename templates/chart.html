@@ -307,7 +307,12 @@ authFetch(`/chart/${ticker}`)
       );
     });
 
-    latestPrice = res.display_price ?? prices[prices.length - 1];
+    latestPrice =
+      typeof res.display_price === "number"
+        ? res.display_price
+        : prices.length
+          ? prices[prices.length - 1]
+          : null;
 
 if (res.price_source === "REGULAR") {
   // =======================
@@ -347,7 +352,7 @@ if (res.price_source === "REGULAR") {
     updateLevels();
   });
   
-fetch(`/api/avg-price/${ticker}`)
+authFetch(`/api/avg-price/${ticker}`)
   .then(r => r.json())
   .then(d => {
     if (d.found) {
@@ -388,7 +393,13 @@ function drawCharts() {
     return `${String(d.getFullYear()).slice(2)}.${d.getMonth() + 1}`;
   };
 
-  new Chart(priceChartEl, {
+  let priceChart, rsiChart;
+
+  function drawCharts() {
+    if (priceChart) priceChart.destroy();
+    if (rsiChart) rsiChart.destroy();
+
+  priceChart = new Chart(priceChartEl, {
     type: "line",
     data: {
       labels,
@@ -421,7 +432,7 @@ function drawCharts() {
     }
   });
 
-  new Chart(rsiChartEl, {
+  rsiChart = new Chart(rsiChartEl, {
     type: "line",
     data: {
       labels,
@@ -595,12 +606,24 @@ async function reserveOrder(side) {
       return;
     }
 
-    const minutes = prompt("개장 후 몇 분 뒤 실행할까요? (0~360)");
+    const minutes = prompt("개장 후 몇 분 뒤 실행할까? (0~360)");
     if (minutes === null) return;
 
     const m = parseInt(minutes);
     if (isNaN(m) || m < 0 || m > 360) {
-      alert("0~360 사이 숫자만 가능");
+      alert("실행 분은 0~360 사이 숫자만 가능");
+      return;
+    }
+    
+    const repeat = prompt(
+      "반복 횟수 (예: 40)\n\n" +
+      "※ 1 = 단일 예약\n" +
+      "※ 40 = 40회 분할 예약"
+    );
+    
+    const r = parseInt(repeat);
+    if (isNaN(r) || r < 1 || r > 200) {
+      alert("반복 횟수는 1~200 사이 숫자만 가능");
       return;
     }
 
@@ -628,7 +651,8 @@ async function reserveOrder(side) {
       method: "POST",
       body: JSON.stringify({
         order_id: data.order_id,
-        execute_after_minutes: m
+        execute_after_minutes: m,
+        repeat_count: r
       })
     });
 
@@ -651,6 +675,18 @@ async function reserveOrder(side) {
   } catch (e) {
     alert("❌ 예약 실패\n" + e.message);
     console.error(e);
+  }
+}
+  
+let ordering = false;
+
+async function reserveOrder(side) {
+  if (ordering) return;
+  ordering = true;
+  try {
+    ...
+  } finally {
+    ordering = false;
   }
 }
 
