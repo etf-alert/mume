@@ -79,6 +79,21 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 nyse = mcal.get_calendar("NYSE")
 ny_tz = pytz.timezone("US/Eastern")
 
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+def send_telegram_message(text: str):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": text,
+        "parse_mode": "HTML"
+    }
+    requests.post(url, json=payload, timeout=5)
+
 # =====================
 # Auth utils
 # =====================
