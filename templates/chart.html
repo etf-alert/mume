@@ -350,7 +350,7 @@ const getAvg  = () => parseFloat(onlyNumber(avgInput.value) || "0");
 authFetch(`/chart/${ticker}`)
   .then(r => r.json())
   .then(res => {
-    const data = res.history;
+    const data = Array.isArray(res.history) ? res.history : [];
     const mainLine = document.getElementById("mainPriceLine");
     const subLine  = document.getElementById("subPriceLine");
     const updown = v => v < 0 ? "down" : "up";
