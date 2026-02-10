@@ -93,6 +93,10 @@ ny_tz = pytz.timezone("US/Eastern")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+seed = body.get("seed")
+if seed is None:
+    raise HTTPException(400, "seed is required")
+
 def send_telegram_message(text: str):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
@@ -790,12 +794,18 @@ def cron_execute_reservations(secret: str = Query(...)):
 
             side = "buy" if o["side"].startswith("BUY") else "sell"
 
-            order_overseas_stock(
+            kis_res = order_overseas_stock(
                 ticker=o["ticker"],
                 price=preview["price"],
                 qty=preview["qty"],
                 side=side
             )
+
+            # 🔥 KIS 실패면 강제로 예외 발생
+            if kis_res.get("rt_cd") != "0":
+                raise RuntimeError(
+                    f"[KIS] {kis_res.get('msg_cd')} - {kis_res.get('msg1')}"
+                )
 
             # 🔧 FIX: executed_at 명확히 저장
             supabase_admin.table("queued_orders").update({
@@ -809,6 +819,7 @@ def cron_execute_reservations(secret: str = Query(...)):
                 executed_price=preview["price"],
                 executed_qty=preview["qty"],
                 executed_at=now,
+                kis_msg=kis_res.get("msg1"),
                 db=supabase_admin
             )
 
@@ -1057,7 +1068,8 @@ def send_order_success_telegram(
     executed_price: float,
     executed_qty: int,
     executed_at: datetime,
-    db
+    db,
+    kis_msg: str | None = None,
 ):
     total = get_repeat_total(db, order["repeat_group"])
     executed_at_str = executed_at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
@@ -1072,6 +1084,9 @@ def send_order_success_telegram(
         f"진행률: {order['repeat_index']}/{total}\n"
         f"실행 시각: {executed_at_str}"
     )
+    if kis_msg:
+        message += f"\nKIS: {kis_msg}"
+        
     send_telegram_message(message)
 
 def send_order_fail_telegram(order: dict, error_msg: str, db):
