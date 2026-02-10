@@ -187,6 +187,16 @@
       background:#22c55e;color:#020617;">
       🟢 매수
     </button>
+
+    <button id="reserveBtn" style="width:100%;padding:12px;font-size:18px;
+      font-weight:700;border-radius:10px;border:none;
+      background:#38bdf8;color:#020617;margin-top:8px">
+      ⏰ 예약 주문
+    </button>
+
+
+
+
     
     <button id="sellBtn" style="width:100%;padding:12px;font-size:18px;
       font-weight:700;border-radius:10px;border:none;
@@ -555,6 +565,68 @@ avgInput.addEventListener("input", () => {
       location.reload();
     }
   });
+  
+async function reserveOrder(side) {
+  try {
+    const seed = getSeed();
+    const avg  = getAvg();
+    if (!seed || !avg || !latestPrice) {
+      alert("시드 / 평단가 입력 필요");
+      return;
+    }
+
+    const minutes = prompt("몇 분 뒤 실행할까요? (0~360)");
+    if (minutes === null) return;
+
+    const m = parseInt(minutes);
+    if (isNaN(m) || m < 0 || m > 360) {
+      alert("0~360 사이 숫자만 가능");
+      return;
+    }
+
+    /* 1️⃣ preview */
+    const preview = await authFetch("/api/order/preview", {
+      method: "POST",
+      body: JSON.stringify({
+        ticker,
+        side,
+        avg_price: avg,
+        current_price: latestPrice,
+        seed
+      })
+    });
+
+    if (!preview.ok) throw new Error("preview 실패");
+    const data = await preview.json();
+
+    /* 2️⃣ reserve */
+    const reserve = await authFetch("/api/order/reserve", {
+      method: "POST",
+      body: JSON.stringify({
+        order_id: data.order_id,
+        execute_after_minutes: m
+      })
+    });
+
+    if (!reserve.ok) {
+      const e = await reserve.text();
+      throw new Error(e);
+    }
+
+    const result = await reserve.json();
+    alert(
+      `⏰ 예약 완료\n\n` +
+      `종목: ${ticker}\n` +
+      `수량: ${data.qty}\n` +
+      `실행 시각: ${result.execute_at}`
+    );
+
+  } catch (e) {
+    alert("❌ 예약 실패\n" + e.message);
+    console.error(e);
+  }
+}
+
 async function sendOrder(side, mode = "DEFAULT") {
   try {
     const seed = getSeed();
@@ -630,6 +702,11 @@ async function sendOrder(side, mode = "DEFAULT") {
   }
 }
 
+document.getElementById("reserveBtn").onclick = () => {
+  reserveOrder("BUY_AVG"); // 필요하면 BUY_MARKET / SELL 분리 가능
+};
+
+  
 document.getElementById("buyBtn").onclick = async () => {
   await sendOrder("BUY_MARKET");
   await sendOrder("BUY_AVG");
