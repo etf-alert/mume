@@ -771,7 +771,9 @@ def cron_execute_reservations(secret: str = Query(...)):
             side = "buy" if o["side"].startswith("BUY") else "sell"
 
             # 🔥 실행 시점에 가격 계산
-            preview = order_preview({
+
+            # 🔧 FIX: cron에서는 API 말고 순수 함수 사용
+            preview = build_order_preview({
                 "side": o["side"],
                 "avg_price": o["avg_price"],
                 "current_price": resolve_prices(o["ticker"])["base_price"],
@@ -1005,9 +1007,8 @@ def chart_data(ticker: str, user=Depends(get_current_user)):
         "price_source": p["price_source"],
     }
     
-def send_order_success_telegram(order: dict, executed_price: float, executed_qty: int, executed_at: datetime, db):
+def send_order_success_telegram(order: dict, executed_price: float, executed_qty: int, db):
     total = get_repeat_total(db, order["repeat_group"])
-
     executed_at = order.get("executed_at")
     if executed_at:
         executed_at = datetime.fromisoformat(executed_at)
