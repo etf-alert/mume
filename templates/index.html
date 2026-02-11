@@ -313,14 +313,14 @@ async function loadReservedOrders() {
           : "완료"}
       </td>
       <td>
-        <button onclick="cancelReservation('${o.id}')">❌</button>
+        <button onclick="cancelReservation('${item.repeat_group}')">❌</button>
       </td>
     `;
     tbody.appendChild(tr);
   });
 }
 
-async function cancelReservation(id) {
+async function cancelReservation(repeat_group) {
   if (!confirm("이 예약을 전체 취소할까요?")) return;
 
   const res = await authFetch(`/api/queued-orders/group/${repeat_group}`, {
