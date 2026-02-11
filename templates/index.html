@@ -302,24 +302,31 @@ async function loadReservedOrders() {
     return;
   }
 
+
   data.forEach(o => {
     const tr = document.createElement("tr");
+
     tr.innerHTML = `
       <td>${o.ticker}</td>
       <td>${sideMap[o.side] ?? o.side}</td>
-      <td>${new Date(o.start_at).toLocaleString()}</td>
+      <td>
+        ${o.execute_after
+          ? new Date(o.execute_after).toLocaleString()
+          : "-"}
+      </td>
       <td style="font-weight:600;">
-        ${o.repeat_label ?? "-"}
+        ${o.status}
       </td>
       <td>
-        ${o.next_execute_at
-          ? new Date(o.next_execute_at).toLocaleString()
+        ${o.execute_after
+          ? new Date(o.execute_after).toLocaleString()
           : "완료"}
       </td>
       <td>
         <button onclick="cancelReservation('${o.repeat_group}')">❌</button>
       </td>
     `;
+
     tbody.appendChild(tr);
   });
 }
