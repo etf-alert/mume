@@ -674,43 +674,31 @@ def get_watchlist_item(ticker: str):
     # =====================
     prev_rsi = get_rsi_from_history(ticker)
 
-    # ✅ prev_rsi 가 None / NaN 인 경우 0으로 보정
+    # ✅ prev_rsi 안전 보정
     try:
         prev_rsi = float(prev_rsi)
     except (TypeError, ValueError):
-        prev_rsi = 0.0  # ✅ 수정
+        prev_rsi = 0.0  # ✅ None / NaN → 0
 
     # =====================
-    # RSI 증감 계산
+    # RSI 증감 계산 (절대 null 안 나오게)
     # =====================
-    if realtime_rsi is not None:
-        # ✅ prev_rsi 가 0이면 증감은 0 처리
+    if realtime_rsi is None:
+        realtime_rsi = 0.0           # ✅ 안전 처리
+        rsi_change = 0.0
+        rsi_change_pct = 0.0
+    else:
         if prev_rsi == 0:
-            rsi_change = 0.0              # ✅ 수정
-            rsi_change_pct = 0.0          # ✅ 수정
+            rsi_change = 0.0         # ✅ 분모 0 방지
+            rsi_change_pct = 0.0
         else:
             rsi_change = round(realtime_rsi - prev_rsi, 2)
             rsi_change_pct = round(
                 (rsi_change / prev_rsi) * 100, 2
             )
-    else:
-        rsi_change = 0.0                  # ✅ 수정 (None → 0)
-        rsi_change_pct = 0.0              # ✅ 수정
-
-        prev_rsi = get_rsi_from_history(ticker)
-
-        if realtime_rsi is not None and prev_rsi is not None:
-            rsi_change = round(realtime_rsi - prev_rsi, 2)
-            rsi_change_pct = round(
-                (rsi_change / prev_rsi) * 100, 2
-            ) if prev_rsi != 0 else 0.0
-        else:
-            rsi_change = None
-            rsi_change_pct = None
 
     item = {
         "ticker": ticker,
-
         # 💰 가격
         "current_price": p["base_price"],
         "current_change": p["current_change"],
@@ -719,8 +707,7 @@ def get_watchlist_item(ticker: str):
         "after_change": p["after_change"],
         "after_change_pct": p["after_change_pct"],
         "price_source": p["price_source"],
-
-        # 📊 RSI (Finviz 실시간)
+        # 📊 RSI
         "rsi": realtime_rsi,
         "rsi_change": rsi_change,
         "rsi_change_pct": rsi_change_pct,
