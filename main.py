@@ -755,7 +755,33 @@ def cron_save(secret: str = Query(...)):
     if secret != os.getenv("CRON_SECRET"):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    today = date.today().isoformat()
+    # 🔥 추가: 현재 뉴욕 시간 가져오기
+    now = datetime.now(ny_tz)
+
+    # 🔥 추가: 오늘 장 스케줄 확인
+    schedule = nyse.schedule(
+        start_date=now.date(),
+        end_date=now.date()
+    )
+
+    # 🔥 추가: 휴장일이면 종료
+    if schedule.empty:
+        return {"status": "holiday"}
+
+    # 🔥 추가: 오늘 정규장 마감 시간
+    close_time = schedule.iloc[0]["market_close"].to_pydatetime()
+
+    # 🔥 추가: 마감 후 3~8분 사이만 저장 허용
+    if not (close_time + timedelta(minutes=3)
+            <= now
+            <= close_time + timedelta(minutes=8)):
+        return {"status": "not close window"}
+
+    # =====================
+    # 기존 로직 시작
+    # =====================
+    today = now.date().isoformat()  # 🔥 수정 (date.today() → now 기준)
+
     rows = []
 
     # =====================
@@ -769,14 +795,11 @@ def cron_save(secret: str = Query(...)):
             rsi, _ = get_finviz_rsi(t)
 
             # =====================
-            # 💰 Yahoo 가격 가져오기 (안전한 방식)
-            # fast_info ❌ 제거
-            # history() ✅ 사용
+            # 💰 Yahoo 가격 가져오기
             # =====================
             ticker_obj = yf.Ticker(t)
             hist = ticker_obj.history(period="1d")
 
-            # 데이터 없으면 스킵
             if hist.empty:
                 print("⚠️ no history:", t)
                 continue
@@ -784,25 +807,19 @@ def cron_save(secret: str = Query(...)):
             price = float(hist["Close"].iloc[-1])
 
             # =====================
-            # 📦 저장할 row 추가
+            # 📦 저장 row
             # =====================
             rows.append({
-                "ticker": t.upper(),   # ✅ 대문자 통일
+                "ticker": t.upper(),
                 "day": today,
                 "rsi": float(rsi),
                 "price": round(price, 2),
             })
 
-            time.sleep(1.2)  # API 과부하 방지
+            time.sleep(1.2)
 
         except Exception as e:
             print("❌ cron_save error:", t, e)
-
-    # =====================
-    # 🔍 디버그 로그
-    # =====================
-    print("📊 rows length:", len(rows))
-    print("📦 rows data:", rows)
 
     # =====================
     # 💾 Supabase 저장
