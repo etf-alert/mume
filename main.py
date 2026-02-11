@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
+from zoneinfo import ZoneInfo
 import requests
 import time
 from pydantic import BaseModel
@@ -88,7 +89,7 @@ templates = Jinja2Templates(directory="templates")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 nyse = mcal.get_calendar("NYSE")
-ny_tz = pytz.timezone("US/Eastern")
+ny_tz = ZoneInfo("America/New_York")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
@@ -149,6 +150,10 @@ def calculate_execute_at_from_market_open(
 
     if market_open is None:
         raise ValueError("다음 정규장 시작 시간을 찾을 수 없습니다")
+
+    # ✅ NEW: timezone 보정
+    if market_open.tzinfo is None:
+        market_open = market_open.replace(tzinfo=ny_tz)
 
     return market_open + timedelta(minutes=execute_after_minutes)
 
