@@ -755,9 +755,6 @@ def cron_save(secret: str = Query(...)):
 # =====================
 # Cron 실행 (장 시작 시)
 # =====================
-# =====================
-# 🔥 Cron 실행 (장 시작 시)
-# =====================
 @app.post("/cron/execute-reservations")
 def cron_execute_reservations(secret: str = Query(...)):
     if secret != os.getenv("CRON_SECRET"):
@@ -779,10 +776,10 @@ def cron_execute_reservations(secret: str = Query(...)):
             if not is_us_market_open():
                 continue
 
-            # 🔧 FIX: 현재가 계산
+            # 🔧 현재가 계산
             current_price = resolve_prices(o["ticker"])["base_price"]
 
-            # 🔧 FIX: 순수 함수 사용
+            # 🔧 순수 함수 사용
             preview = build_order_preview({
                 "side": o["side"],
                 "avg_price": o["avg_price"],
@@ -800,19 +797,19 @@ def cron_execute_reservations(secret: str = Query(...)):
                 side=side
             )
 
-            # 🔥 KIS 실패면 강제로 예외 발생
-            if kis_res.get("rt_cd") != "0":
+            # 🔥 ADDED: KIS 실패 강제 예외 처리
+            if not kis_res or kis_res.get("rt_cd") != "0":
                 raise RuntimeError(
                     f"[KIS] {kis_res.get('msg_cd')} - {kis_res.get('msg1')}"
                 )
 
-            # 🔧 FIX: executed_at 명확히 저장
+            # 주문 완료 처리
             supabase_admin.table("queued_orders").update({
                 "status": "DONE",
                 "executed_at": now.isoformat()
             }).eq("id", o["id"]).execute()
 
-            # 🟢 NEW: executed_at 직접 전달
+            # 🔥 ADDED: KIS 응답 메시지 텔레그램 전달
             send_order_success_telegram(
                 order=o,
                 executed_price=preview["price"],
@@ -834,8 +831,45 @@ def cron_execute_reservations(secret: str = Query(...)):
                 db=supabase_admin
             )
 
-    return {"status": "ok"}
+    done_limit = 3000
 
+    done_res = (
+        supabase_admin
+        .table("queued_orders")
+        .select("id")
+        .eq("status", "DONE")
+        .order("created_at", desc=True)
+        .execute()
+    )
+
+    done_rows = done_res.data or []
+
+    if len(done_rows) > done_limit:
+        delete_ids = [r["id"] for r in done_rows[done_limit:]]
+        supabase_admin.table("queued_orders").delete().in_("id", delete_ids).execute()
+
+
+    # ===============================
+    # 🧹 ERROR 최근 500개만 유지
+    # ===============================
+    error_limit = 500
+
+    error_res = (
+        supabase_admin
+        .table("queued_orders")
+        .select("id")
+        .eq("status", "ERROR")
+        .order("created_at", desc=True)
+        .execute()
+    )
+
+    error_rows = error_res.data or []
+
+    if len(error_rows) > error_limit:
+        delete_ids = [r["id"] for r in error_rows[error_limit:]]
+        supabase_admin.table("queued_orders").delete().in_("id", delete_ids).execute()
+        
+    return {"status": "ok"}
 
 # =====================
 # 🔥 예약 주문 삭제 API
