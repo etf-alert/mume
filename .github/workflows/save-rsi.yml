@@ -1,0 +1,14 @@
+name: Save RSI History
+
+on:
+  schedule:
+    - cron: "0 10 * * *"   # UTC 10:00 (한국 19시)
+  workflow_dispatch: {}
+
+jobs:
+  save-rsi:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call RSI Save API
+        run: |
+          curl -X POST "${{ secrets.RENDER_CRON_URL }}/cron/save?secret=${{ secrets.CRON_SECRET }}"
