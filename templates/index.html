@@ -337,7 +337,7 @@ async function cancelReservation(repeat_group) {
   if (!ok) return;  // ❌ 취소하면 중단
 
   try {
-    const res = await authFetch(`/api/order/cancel/${repeat_group}`, {
+    const res = await authFetch(`/api/queued-orders/group/${repeat_group}}`, {
       method: "DELETE"
     });
 
