@@ -280,12 +280,21 @@ async function authFetch(url, options = {}) {
   }
 
 const body = document.getElementById("tableBody");
+  
+const sideMap = {
+  "BUY_AVG": "평단가 매수 (LOC)",
+  "BUY_MARKET": "큰 수 매수 (LOC)",
+  "SELL": "평단가 +10% 매도"
+};
 
 async function loadReservedOrders() {
   const res = await authFetch("/api/order/queued-orders");
   if (!res.ok) return;
 
   const data = await res.json();
+
+  console.log("📦 queued-orders 응답 데이터:", data); // ✅ 여기 추가
+
   const tbody = document.getElementById("reserved-orders-body");
   tbody.innerHTML = "";
 
