@@ -17,7 +17,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-MAX_RETRY = 3  # 🟢 NEW: 최대 재시도 횟수
+MAX_RETRY = 3
 
 
 def run():
@@ -25,7 +25,7 @@ def run():
     now_iso = now.isoformat()
 
     # =========================
-    # 🟢 NEW: 오래된 RUNNING 복구 (락 유실 대비)
+    # 🔥 오래된 RUNNING 복구
     # =========================
     supabase.table("queued_orders") \
         .update({"status": "PENDING"}) \
@@ -34,7 +34,7 @@ def run():
         .execute()
 
     # =========================
-    # 1️⃣ 실행 대상 조회
+    # 실행 대상 조회
     # =========================
     res = (
         supabase
@@ -49,8 +49,9 @@ def run():
     print(f"▶ ready orders: {len(orders)}")
 
     for o in orders:
+
         # =========================
-        # 2️⃣ 실행 락
+        # 실행 락
         # =========================
         lock = (
             supabase
@@ -65,44 +66,64 @@ def run():
             continue
 
         try:
+            ticker = o["ticker"]
+
             # =========================
-            # 3️⃣ 현재가 조회
+            # 🔥 실시간 현재가 조회
             # =========================
-            current_price = get_current_price(o["ticker"])
+            current_price = get_current_price(ticker)
             if not current_price or current_price <= 0:
                 raise ValueError("invalid current price")
 
-            avg_price = float(o["avg_price"])
             seed = float(o["seed"])
 
             # =========================
-            # 4️⃣ 가격 / 수량 계산
-            # (preview / reserve 로직과 완전히 동일)
+            # 🔥 실시간 평단가 조회 (DB 값 사용 안함)
+            # =========================
+            pos = get_overseas_avg_price(ticker)
+            if not pos:
+                raise ValueError("position fetch failed")
+
+            avg_price = float(pos.get("avg_price") or 0)  # 🔥 수정
+            qty_owned = int(pos.get("qty") or 0)          # 🔥 수정
+
+            # =========================
+            # 가격 / 수량 계산
             # =========================
             if o["side"] == "BUY_MARKET":
+
+                if avg_price <= 0:  # 🔥 방어
+                    raise ValueError("invalid avg_price")
+
                 price = round(min(avg_price * 1.05, current_price * 1.15), 2)
-                qty = int((seed / 80) // price)  # 🔧 CHANGED: preview와 통일
+                if price <= 0:
+                    raise ValueError("invalid price")
+
+                qty = int((seed / 80) // price)
                 side = "buy"
 
             elif o["side"] == "BUY_AVG":
+
+                if avg_price <= 0:  # 🔥 방어
+                    raise ValueError("invalid avg_price")
+
                 price = round(avg_price, 2)
-                qty = int((seed / 80) // price)  # 🔧 CHANGED
+                qty = int((seed / 80) // price)
                 side = "buy"
 
             elif o["side"] == "SELL":
-                pos = get_overseas_avg_price(o["ticker"])
-                qty = pos["qty"]
-                if qty <= 0:
+
+                if qty_owned <= 0:
                     raise ValueError("no position to sell")
 
                 target_price = round(avg_price * 1.10, 2)
 
-                # 🔧 CHANGED: preview와 동일한 분기
                 if current_price > target_price:
                     price = round(current_price, 2)
                 else:
                     price = target_price
 
+                qty = qty_owned
                 side = "sell"
 
             else:
@@ -113,7 +134,7 @@ def run():
 
             print(
                 "▶ executing:",
-                o["ticker"],
+                ticker,
                 o["side"],
                 f"price={price}",
                 f"qty={qty}",
@@ -121,36 +142,46 @@ def run():
             )
 
             # =========================
-            # 5️⃣ 실제 주문
+            # 실제 주문
             # =========================
-            kis_res = order_overseas_stock(   
-                ticker=o["ticker"],
+            kis_res = order_overseas_stock(
+                ticker=ticker,
                 price=price,
                 qty=qty,
                 side=side
             )
 
+            # 🔥 KIS 응답 검증 (실패 응답 방어)
+            if isinstance(kis_res, dict):
+                if kis_res.get("rt_cd") not in ["0", 0, None]:
+                    raise ValueError(f"KIS error: {kis_res}")
+
             # =========================
-            # 6️⃣ 성공 처리
+            # 성공 처리
             # =========================
             supabase.table("queued_orders").update({
                 "status": "DONE",
                 "executed_at": now_iso,
                 "error": None
             }).eq("id", o["id"]).execute()
-            # 🟢 NEW: 텔레그램 성공 알림
-            send_order_success_telegram(
-                order=o,
-                executed_price=price,     
-                executed_qty=qty,         
-                executed_at=now,
-                kis_msg=kis_res.get("msg1") if isinstance(kis_res, dict) else None,  
-                db=supabase
-            )
+
+            # 🔥 텔레그램도 안전하게
+            try:
+                send_order_success_telegram(
+                    order=o,
+                    executed_price=price,
+                    executed_qty=qty,
+                    executed_at=now,
+                    kis_msg=kis_res.get("msg1") if isinstance(kis_res, dict) else None,
+                    db=supabase
+                )
+            except Exception as tg_err:
+                print("⚠ telegram error:", tg_err)
 
             print("✅ done:", o["id"])
 
         except Exception as e:
+
             retry = (o.get("retry_count") or 0) + 1
 
             update = {
@@ -161,12 +192,14 @@ def run():
             if retry >= MAX_RETRY:
                 update["status"] = "ERROR"
 
-                # 🟢 NEW: 최종 실패 시 텔레그램 알림
-                send_order_fail_telegram(
-                    order=o,
-                    error_msg=str(e),
-                    db=supabase_admin
-                )
+                try:
+                    send_order_fail_telegram(
+                        order=o,
+                        error_msg=str(e),
+                        db=supabase
+                    )
+                except Exception as tg_err:
+                    print("⚠ telegram fail error:", tg_err)
             else:
                 update["status"] = "PENDING"
 
