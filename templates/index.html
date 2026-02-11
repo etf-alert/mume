@@ -417,6 +417,7 @@ async function loadData() {
   }
 
   const data = await res.json();
+  console.log("📊 WATCHLIST API RESPONSE:", data);
   const items = data.items ?? [];
   
   if (items.length === 0) {
