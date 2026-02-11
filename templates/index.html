@@ -323,7 +323,7 @@ async function loadReservedOrders() {
 async function cancelReservation(id) {
   if (!confirm("이 예약을 전체 취소할까요?")) return;
 
-  const res = await authFetch(`/api/order/queued-orders/${id}`, {
+  const res = await authFetch(`/api/queued-orders/group/${repeat_group}`, {
     method: "DELETE"
   });
 
