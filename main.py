@@ -748,39 +748,65 @@ def cleanup_order_cache():
 # =====================
 @app.api_route("/cron/save", methods=["GET", "POST"])
 def cron_save(secret: str = Query(...)):
+
+    # =====================
+    # 🔐 시크릿 체크
+    # =====================
     if secret != os.getenv("CRON_SECRET"):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     today = date.today().isoformat()
     rows = []
 
+    # =====================
+    # 🔁 워치리스트 순회
+    # =====================
     for t in WATCHLIST:
         try:
+            # =====================
+            # 📊 Finviz RSI 가져오기
+            # =====================
             rsi, _ = get_finviz_rsi(t)
 
-            price_info = yf.Ticker(t).fast_info
-            price = price_info.get("last_price")
+            # =====================
+            # 💰 Yahoo 가격 가져오기 (안전한 방식)
+            # fast_info ❌ 제거
+            # history() ✅ 사용
+            # =====================
+            ticker_obj = yf.Ticker(t)
+            hist = ticker_obj.history(period="1d")
 
-            if price is None:
-                print("⚠️ price None:", t)
+            # 데이터 없으면 스킵
+            if hist.empty:
+                print("⚠️ no history:", t)
                 continue
 
+            price = float(hist["Close"].iloc[-1])
+
+            # =====================
+            # 📦 저장할 row 추가
+            # =====================
             rows.append({
-                "ticker": t,
+                "ticker": t.upper(),   # ✅ 대문자 통일
                 "day": today,
                 "rsi": float(rsi),
-                "price": round(float(price), 2),
+                "price": round(price, 2),
             })
 
-            time.sleep(1.2)
+            time.sleep(1.2)  # API 과부하 방지
 
         except Exception as e:
             print("❌ cron_save error:", t, e)
 
-    # 🔥 디버그 로그
+    # =====================
+    # 🔍 디버그 로그
+    # =====================
     print("📊 rows length:", len(rows))
     print("📦 rows data:", rows)
 
+    # =====================
+    # 💾 Supabase 저장
+    # =====================
     if rows:
         supabase_admin.table("rsi_history").upsert(
             rows,
@@ -792,7 +818,6 @@ def cron_save(secret: str = Query(...)):
         "day": today,
         "rows_count": len(rows)
     }
-
 
 # =====================
 # Cron 실행 (장 시작 시)
