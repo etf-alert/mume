@@ -729,10 +729,13 @@ async function reserveOrder(side) {
     /* 2️⃣ reserve */
     const reserve = await authFetch("/api/order/reserve", {
       method: "POST",
+      headers: { "Content-Type": "application/json" }, // ✅ 추가
       body: JSON.stringify({
         order_id: data.order_id,
         execute_after_minutes: m,
-        repeat_count: r
+        repeat_days: r,        // ✅ 수정 (repeat_count → repeat_days)
+        seed: seed,            // ✅ 추가
+        avg_price: avg         // ✅ 추가
       })
     });
 
@@ -749,7 +752,7 @@ async function reserveOrder(side) {
       `구분: ${side}\n` +
       `가격: $${data.price}\n` +
       `수량: ${data.qty}\n` +
-      `실행: ${new Date(result.execute_at).toLocaleString()}`
+      `실행: ${new Date(result.first_execute_at).toLocaleString()}`
     );
 
   } catch (e) {
