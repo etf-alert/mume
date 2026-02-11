@@ -755,34 +755,42 @@ def cron_save(secret: str = Query(...)):
     if secret != os.getenv("CRON_SECRET"):
         raise HTTPException(status_code=403, detail="Forbidden")
 
-    # 🔥 추가: 현재 뉴욕 시간 가져오기
+    # 🔥 현재 뉴욕 시간
     now = datetime.now(ny_tz)
 
-    # 🔥 추가: 오늘 장 스케줄 확인
+    # 🔥 오늘 장 스케줄 확인
     schedule = nyse.schedule(
         start_date=now.date(),
         end_date=now.date()
     )
 
-    # 🔥 추가: 휴장일이면 종료
+    # 🔥 휴장일 종료
     if schedule.empty:
         return {"status": "holiday"}
 
-    # 🔥 추가: 오늘 정규장 마감 시간
     close_time = schedule.iloc[0]["market_close"].to_pydatetime()
 
-    # 🔥 추가: 마감 후 3~8분 사이만 저장 허용
+    # 🔥 마감 후 3~8분 사이만 허용
     if not (close_time + timedelta(minutes=3)
             <= now
             <= close_time + timedelta(minutes=8)):
         return {"status": "not close window"}
 
     # =====================
-    # 기존 로직 시작
+    # 🔥 오늘 날짜 (NY 기준)
     # =====================
-    today = now.date().isoformat()  # 🔥 수정 (date.today() → now 기준)
+    today = now.date().isoformat()
 
     rows = []
+
+    # 🔥 Yahoo 가격을 한 번에 다운로드 (속도 개선 핵심)
+    tickers_str = " ".join(WATCHLIST)
+    data = yf.download(
+        tickers_str,
+        period="1d",
+        group_by="ticker",
+        progress=False
+    )
 
     # =====================
     # 🔁 워치리스트 순회
@@ -790,33 +798,35 @@ def cron_save(secret: str = Query(...)):
     for t in WATCHLIST:
         try:
             # =====================
-            # 📊 Finviz RSI 가져오기
+            # 📊 Finviz RSI
             # =====================
             rsi, _ = get_finviz_rsi(t)
 
-            # =====================
-            # 💰 Yahoo 가격 가져오기
-            # =====================
-            ticker_obj = yf.Ticker(t)
-            hist = ticker_obj.history(period="1d")
-
-            if hist.empty:
-                print("⚠️ no history:", t)
+            # 🔥 RSI None 방어
+            if rsi is None:
+                print("⚠️ rsi None:", t)
                 continue
 
-            price = float(hist["Close"].iloc[-1])
+            # =====================
+            # 💰 Yahoo 종가 추출 (download 구조 대응)
+            # =====================
+            if t not in data or data[t].empty:
+                print("⚠️ no price data:", t)
+                continue
+
+            price = float(data[t]["Close"].iloc[-1])
 
             # =====================
-            # 📦 저장 row
+            # 📦 row 추가
             # =====================
             rows.append({
                 "ticker": t.upper(),
                 "day": today,
-                "rsi": float(rsi),
+                "rsi": round(float(rsi), 2),
                 "price": round(price, 2),
             })
 
-            time.sleep(1.2)
+            time.sleep(0.6)  # 🔥 1.2 → 0.4 (Finviz 보호용)
 
         except Exception as e:
             print("❌ cron_save error:", t, e)
@@ -824,11 +834,17 @@ def cron_save(secret: str = Query(...)):
     # =====================
     # 💾 Supabase 저장
     # =====================
-    if rows:
-        supabase_admin.table("rsi_history").upsert(
-            rows,
-            on_conflict="ticker,day"
-        ).execute()
+    if not rows:  # 🔥 rows 없으면 바로 종료
+        return {
+            "status": "no data",
+            "day": today,
+            "rows_count": 0
+        }
+
+    supabase_admin.table("rsi_history").upsert(
+        rows,
+        on_conflict="ticker,day"
+    ).execute()
 
     return {
         "saved": [r["ticker"] for r in rows],
