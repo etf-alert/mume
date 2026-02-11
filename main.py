@@ -5,7 +5,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import OAuth2PasswordBearer
 from jose import jwt, JWTError
-from zoneinfo import ZoneInfo
 import requests
 import time
 from pydantic import BaseModel
@@ -89,7 +88,7 @@ templates = Jinja2Templates(directory="templates")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 nyse = mcal.get_calendar("NYSE")
-ny_tz = ZoneInfo("America/New_York")
+ny_tz = pytz.timezone("US/Eastern")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
