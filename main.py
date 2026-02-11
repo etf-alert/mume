@@ -192,7 +192,7 @@ def login(data: dict):
 # =====================
 # 🔥 예약 주문 목록 조회 (index용)
 # =====================
-@app.get("/api/order/queued-orders")  # 🔥 수정
+@app.get("/api/order/queued-orders")
 def list_queued_orders(user: str = Depends(get_current_user)):
     res = (
         supabase_admin
@@ -207,36 +207,33 @@ def list_queued_orders(user: str = Depends(get_current_user)):
             repeat_index
         """)
         .eq("user_id", user)
-        .eq("status", "PENDING")   # 🔥 실행 전 것만
+        .eq("status", "PENDING")
         .order("execute_after")
         .execute()
     )
 
     rows = res.data or []
 
-    # 🔥 repeat_group별 전체 개수 계산
-    group_totals: dict[str, int] = {}
+    # 🔥 repeat_group별 가장 빠른 것만 남긴다
+    group_first = {}
+
     for r in rows:
         g = r["repeat_group"]
-        if g:
-            group_totals[g] = group_totals.get(g, 0) + 1
+        if g not in group_first:
+            group_first[g] = r
 
-    result = []
-    for r in rows:
-        total = group_totals.get(r["repeat_group"], 1)
+    result = list(group_first.values())
 
-        result.append({
-            **r,
-
-            # 🔥 이것만 쓴다. 다른 개념 없음.
-            # 예: "1/40", "2/40"
-            "repeat_label": (
-                f'{r["repeat_index"]}/{total}'
-                if total > 1 else None
-            )
-        })
+    # 🔥 repeat_label 계산
+    for r in result:
+        total = get_repeat_total(supabase_admin, r["repeat_group"])
+        r["repeat_label"] = (
+            f'{r["repeat_index"]}/{total}'
+            if total > 1 else None
+        )
 
     return result
+
 
 # =====================
 # 🔥 repeat_group 전체 개수 계산 (공통)
