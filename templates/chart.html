@@ -533,11 +533,14 @@ function drawCharts() {
   });
 }
 
-function openReserveModal() {
+function openReserveModal(typeLabel) {
   return new Promise(resolve => {
     const modal = document.getElementById("reserveModal");
     const minEl = document.getElementById("reserveMinutes");
     const repEl = document.getElementById("reserveRepeat");
+    // 🔥 타입 표시
+    const titleEl = modal.querySelector("h3");
+    titleEl.innerText = `⏰ 예약 설정 - ${typeLabel}`;
 
     modal.style.display = "flex";
 
@@ -702,8 +705,15 @@ async function reserveOrder(side) {
       alert("매도 가능한 수량이 없습니다");
       return;
     }
+    
+    function sideLabel(side) {
+      if (side === "BUY_AVG") return "평단가 매수 (LOC)";
+      if (side === "BUY_MARKET") return "큰 수 매수 (LOC)";
+      if (side === "SELL") return "평단가 +10% 매도";
+      return side;
+    }
 
-    const config = await openReserveModal();
+    const config = await openReserveModal(sideLabel(side));  // 🔥 타입 전달
     if (!config) return;
     const { minutes: m, repeat: r } = config;
 
