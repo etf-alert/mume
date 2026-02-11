@@ -840,8 +840,9 @@ async function sendOrder(side, mode = "DEFAULT") {
 }
 
 // 예약 매수 → 평단가 기준 LOC
-document.getElementById("reserveBuyBtn").onclick = () => {
-  reserveOrder("BUY_AVG");
+document.getElementById("reserveBuyBtn").onclick = async () => {
+  await reserveOrder("BUY_MARKET");  // 🔥 큰 수 매수 (LOC)
+  await reserveOrder("BUY_AVG");     // 🔥 평단가 매수 (LOC)
 };
 
 // 예약 매도 → 평단가 +10%
