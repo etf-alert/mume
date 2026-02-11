@@ -123,7 +123,7 @@ def run():
             # =========================
             # 5️⃣ 실제 주문
             # =========================
-            order_overseas_stock(
+            kis_res = order_overseas_stock(   
                 ticker=o["ticker"],
                 price=price,
                 qty=qty,
@@ -138,15 +138,14 @@ def run():
                 "executed_at": now_iso,
                 "error": None
             }).eq("id", o["id"]).execute()
-
             # 🟢 NEW: 텔레그램 성공 알림
             send_order_success_telegram(
                 order=o,
-                executed_price=preview["price"],
-                executed_qty=preview["qty"],
+                executed_price=price,     
+                executed_qty=qty,         
                 executed_at=now,
-                kis_msg=kis_res.get("msg1"),   # 🔥 여기서 전달
-                db=supabase_admin
+                kis_msg=kis_res.get("msg1") if isinstance(kis_res, dict) else None,  
+                db=supabase
             )
 
             print("✅ done:", o["id"])
