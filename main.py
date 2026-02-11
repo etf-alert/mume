@@ -499,9 +499,6 @@ async def reserve_order(
     user: str = Depends(get_current_user)
 ):
     body = await request.json()
-    seed = body.get("seed")
-    if seed is None:
-        raise HTTPException(400, "seed is required")
 
     order_id = body["order_id"]
     minutes = int(body["execute_after_minutes"])
