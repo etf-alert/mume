@@ -192,7 +192,7 @@ def login(data: dict):
 # =====================
 # 🔥 예약 주문 목록 조회 (index용)
 # =====================
-@app.get("/api/queued-orders")
+@app.get("/api/order/queued-orders")  # 🔥 수정
 def list_queued_orders(user: str = Depends(get_current_user)):
     res = (
         supabase_admin
