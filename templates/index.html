@@ -313,7 +313,7 @@ async function loadReservedOrders() {
           : "완료"}
       </td>
       <td>
-        <button onclick="cancelReservation('${item.repeat_group}')">❌</button>
+        <button onclick="cancelReservation('${o.repeat_group}')">❌</button>
       </td>
     `;
     tbody.appendChild(tr);
