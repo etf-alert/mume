@@ -749,7 +749,7 @@ def cleanup_order_cache():
 # =====================
 # Cron 저장
 # =====================
-@app.get("/cron/save")
+@app.post("/cron/save")
 def cron_save(secret: str = Query(...)):
     if secret != os.getenv("CRON_SECRET"):
         raise HTTPException(status_code=403, detail="Forbidden")
