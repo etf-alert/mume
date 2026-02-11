@@ -504,9 +504,27 @@ async def reserve_order(
 ):
     body = await request.json()
 
-    order_id = body["order_id"]
-    minutes = int(body["execute_after_minutes"])
+    order_id = body.get("order_id")  # ✅ 수정 (직접 접근 제거)
+    minutes = int(body.get("execute_after_minutes", 0))  # ✅ 수정
     repeat_days = int(body.get("repeat_days", 1))
+
+    # =========================
+    # ✅ NEW: seed / avg_price 안전 처리
+    # =========================
+    seed = body.get("seed")            # ✅ 수정
+    avg_price = body.get("avg_price")  # ✅ 수정
+
+    if seed is None:
+        raise HTTPException(400, "seed is required")  # ✅ 수정
+
+    if avg_price is None:
+        raise HTTPException(400, "avg_price is required")  # ✅ 수정
+
+    try:
+        seed = float(seed)          # ✅ 타입 강제 변환
+        avg_price = float(avg_price)
+    except ValueError:
+        raise HTTPException(400, "seed/avg_price must be number")
 
     order = ORDER_CACHE.get(order_id)
     if not order:
@@ -519,18 +537,18 @@ async def reserve_order(
         raise HTTPException(400, "repeat_days 범위 오류")
 
     # =========================
-    # 🟢 NEW: 영업일 계산
+    # 🟢 영업일 계산
     # =========================
     start_date = datetime.now(ny_tz).date()
     trading_days = get_next_n_trading_days(start_date, repeat_days)
 
-    repeat_group = str(uuid4())  # 🟢 NEW
+    repeat_group = str(uuid4())
     rows = []
 
     for idx, day in enumerate(trading_days, start=1):
         execute_at = calculate_execute_at_from_market_open(
             minutes,
-            base_date=day   # 🔧 CHANGED
+            base_date=day
         )
 
         if execute_at <= datetime.now(timezone.utc):
@@ -541,14 +559,12 @@ async def reserve_order(
             "ticker": order["ticker"],
             "side": order["side"],
 
-            # 🔧 실행 시점 계산용 데이터만 저장
-            "seed": body["seed"],
-            "avg_price": body["avg_price"],
+            # ✅ 수정: 안전 변수 사용
+            "seed": seed,
+            "avg_price": avg_price,
 
             "execute_after": execute_at.astimezone(timezone.utc).isoformat(),
             "status": "PENDING",
-
-            # 🟢 반복 주문 식별
             "repeat_group": repeat_group,
             "repeat_index": idx
         })
@@ -557,7 +573,7 @@ async def reserve_order(
         raise HTTPException(400, "유효한 예약 날짜 없음")
 
     # =========================
-    # 🟢 NEW: 다건 insert
+    # 🟢 다건 insert
     # =========================
     try:
         supabase_admin.table("queued_orders").insert(rows).execute()
