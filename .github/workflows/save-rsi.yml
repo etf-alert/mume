@@ -2,7 +2,7 @@ name: Save RSI History
 
 on:
   schedule:
-    - cron: "0 10 * * *"   # UTC 10:00 (한국 19시)
+    - cron: "5 21 * * 1-5" # UTC 21:05 (미국장 마감 직후, 평일만)
   workflow_dispatch: {}
 
 jobs:
