@@ -11,6 +11,21 @@
   <title>Watchlist App</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
+    /* =============================== */
+    /* ✅ 예약 주문 테이블 글씨 작게 */
+    /* =============================== */
+    #reserved-orders table {
+      font-size: 13px;   /* 🔥 기존보다 작게 */
+    }
+
+    #reserved-orders th {
+      font-size: 12px;   /* 🔥 헤더 더 작게 */
+    }
+
+    #reserved-orders td {
+      padding: 6px 4px;  /* 🔥 행 높이도 줄임 */
+    }
+
     body {
       background: #0f172a;
       color: #e5e7eb;
@@ -42,7 +57,6 @@
       border-radius: 6px;
       cursor: pointer;
     }
-
 
     .table-wrap {
       max-height: 70vh;
@@ -274,6 +288,25 @@ async function authFetch(url, options = {}) {
       .catch(() => alert("추가 실패 (중복 또는 오류)"));
   }
 
+  // ===============================
+  // ✅ 날짜 포맷 변환 함수 추가
+  // 26. 2. 12. 23:00 형식
+  // ===============================
+  function formatKoreanShortDate(dateString) {
+    if (!dateString) return "-";
+
+    const d = new Date(dateString);
+
+    const yy = String(d.getFullYear()).slice(2);  // 연도 2자리
+    const m  = d.getMonth() + 1;                 // 월
+    const day = d.getDate();                     // 일
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+
+    return `${yy}. ${m}. ${day}. ${hh}:${mm}`;
+  }
+
+
 const body = document.getElementById("tableBody");
   
 const sideMap = {
@@ -308,17 +341,15 @@ async function loadReservedOrders() {
       <td>${o.ticker}</td>
       <td>${sideMap[o.side] ?? o.side}</td>
       <td>
-        ${o.execute_after
-          ? new Date(o.execute_after).toLocaleString()
-          : "-"}
+        ${formatKoreanShortDate(o.execute_after)}  <!-- ✅ 시작일 -->
       </td>
       <td style="font-weight:600;">
         ${o.repeat_label ?? o.status}
       </td>
       <td>
-        ${o.execute_after
-          ? new Date(o.execute_after).toLocaleString()
-          : "완료"}
+      ${o.execute_after
+        ? formatKoreanShortDate(o.execute_after)   <!-- ✅ 다음 실행일 -->
+        : "완료"}
       </td>
       <td>
         <button onclick="cancelReservation('${o.repeat_group}')">❌</button>
