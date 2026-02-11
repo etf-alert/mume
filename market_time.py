@@ -55,7 +55,6 @@ def is_us_market_open(now=None):
 
     return open_time <= now < close_time
 
-
 def next_market_open(base_date=None):
     if base_date is None:
         base_date = datetime.now(ny_tz).date()
@@ -70,5 +69,7 @@ def next_market_open(base_date=None):
     if schedule.empty:
         return None
 
-    return schedule.iloc[0]["market_open"].to_pydatetime()
+    # ✅ 그대로 반환 (tz 유지)
+    return schedule.iloc[0]["market_open"]
+
 
