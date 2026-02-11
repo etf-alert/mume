@@ -282,7 +282,7 @@ async function authFetch(url, options = {}) {
 const body = document.getElementById("tableBody");
 
 async function loadReservedOrders() {
-  const res = await authFetch("/api/order/reservations");
+  const res = await authFetch("/api/order/queued-orders");
   if (!res.ok) return;
 
   const data = await res.json();
@@ -323,7 +323,7 @@ async function loadReservedOrders() {
 async function cancelReservation(id) {
   if (!confirm("이 예약을 전체 취소할까요?")) return;
 
-  const res = await authFetch(`/api/order/reservations/${id}`, {
+  const res = await authFetch(`/api/order/queued-orders/${id}`, {
     method: "DELETE"
   });
 
