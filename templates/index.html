@@ -287,8 +287,7 @@ async function loadReservedOrders() {
   if (!res.ok) return;
 
   const data = await res.json();
-
-  console.log("📦 queued-orders 응답 데이터:", data); // ✅ 여기 추가
+  console.log("📦 queued-orders 응답 데이터:", data);
 
   const tbody = document.getElementById("reserved-orders-body");
   tbody.innerHTML = "";
@@ -302,9 +301,22 @@ async function loadReservedOrders() {
     return;
   }
 
+  // 🔥 repeat_group별 전체 개수 계산
+  const groupCount = {};
+  data.forEach(o => {
+    if (!groupCount[o.repeat_group]) {
+      groupCount[o.repeat_group] = 0;
+    }
+    groupCount[o.repeat_group]++;
+  });
 
   data.forEach(o => {
     const tr = document.createElement("tr");
+
+    // 🔥 1/40 형식으로 표시
+    const progress = o.repeat_group
+      ? `${o.repeat_index}/${groupCount[o.repeat_group]}`
+      : o.status;
 
     tr.innerHTML = `
       <td>${o.ticker}</td>
@@ -315,7 +327,7 @@ async function loadReservedOrders() {
           : "-"}
       </td>
       <td style="font-weight:600;">
-        ${o.status}
+        ${progress}
       </td>
       <td>
         ${o.execute_after
