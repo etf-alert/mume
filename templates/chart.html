@@ -346,8 +346,16 @@ function formatNumber(v) {
   const int = i.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   return d !== undefined ? `${int}.${d}` : int;
 }
-const getSeed = () => parseFloat(onlyNumber(seedInput.value) || "0");
-const getAvg  = () => parseFloat(onlyNumber(avgInput.value) || "0");
+// ✅ 빈값이면 NaN 반환하도록 수정 (0으로 강제하지 않음)
+const getSeed = () => {
+  const v = onlyNumber(seedInput.value);
+  return v ? parseFloat(v) : NaN;  // 수정
+};
+
+const getAvg = () => {
+  const v = onlyNumber(avgInput.value);
+  return v ? parseFloat(v) : NaN;  // 수정
+};
 
 /* ===== 데이터 로드 ===== */
 authFetch(`/chart/${ticker}`)
@@ -685,7 +693,7 @@ async function reserveOrder(side) {
       return;
     }
 
-    if (side !== "SELL" && (!seed || !avg)) {
+    if (side !== "SELL" && (isNaN(seed) || isNaN(avg))) {
       alert("시드 / 평단가 입력 필요");
       return;
     }
@@ -756,7 +764,8 @@ async function sendOrder(side, mode = "DEFAULT") {
   try {
     const seed = getSeed();
     const avg  = getAvg();
-    if (!seed || !avg || !latestPrice) {
+    // ✅ seed가 0인지 여부가 아니라 "NaN인지" 검사하도록 수정
+    if (side !== "SELL" && (isNaN(seed) || isNaN(avg))) {
       alert("시드 / 평단가 입력 필요");
       return;
     }
