@@ -301,34 +301,8 @@ async function loadReservedOrders() {
     return;
   }
 
-  // 🔥 repeat_group별 가장 작은 repeat_index만 추출
-  const groupMap = {};
-
   data.forEach(o => {
-    if (!groupMap[o.repeat_group]) {
-      groupMap[o.repeat_group] = o;
-    } else {
-      if (o.repeat_index < groupMap[o.repeat_group].repeat_index) {
-        groupMap[o.repeat_group] = o;
-      }
-    }
-  });
-
-  const filtered = Object.values(groupMap);
-
-  // 🔥 전체 개수 계산 (1/40 만들기 위해 필요)
-  const groupCount = {};
-  data.forEach(o => {
-    if (!groupCount[o.repeat_group]) {
-      groupCount[o.repeat_group] = 0;
-    }
-    groupCount[o.repeat_group]++;
-  });
-
-  filtered.forEach(o => {
     const tr = document.createElement("tr");
-
-    const progress = `${o.repeat_index}/${groupCount[o.repeat_group]}`;
 
     tr.innerHTML = `
       <td>${o.ticker}</td>
@@ -339,7 +313,7 @@ async function loadReservedOrders() {
           : "-"}
       </td>
       <td style="font-weight:600;">
-        ${progress}
+        ${o.repeat_label ?? o.status}
       </td>
       <td>
         ${o.execute_after
@@ -354,6 +328,7 @@ async function loadReservedOrders() {
     tbody.appendChild(tr);
   });
 }
+
 
 async function cancelReservation(repeat_group) {
   // ✅ 1️⃣ 한 번 더 확인
