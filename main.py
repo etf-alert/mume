@@ -757,16 +757,29 @@ def cron_save(secret: str = Query(...)):
     for t in WATCHLIST:
         try:
             rsi, _ = get_finviz_rsi(t)
-            price = yf.Ticker(t).fast_info["last_price"]
+
+            price_info = yf.Ticker(t).fast_info
+            price = price_info.get("last_price")
+
+            if price is None:
+                print("⚠️ price None:", t)
+                continue
+
             rows.append({
                 "ticker": t,
                 "day": today,
                 "rsi": float(rsi),
                 "price": round(float(price), 2),
             })
+
             time.sleep(1.2)
+
         except Exception as e:
-            print("cron_save error:", t, e)
+            print("❌ cron_save error:", t, e)
+
+    # 🔥 디버그 로그
+    print("📊 rows length:", len(rows))
+    print("📦 rows data:", rows)
 
     if rows:
         supabase_admin.table("rsi_history").upsert(
@@ -774,7 +787,11 @@ def cron_save(secret: str = Query(...)):
             on_conflict="ticker,day"
         ).execute()
 
-    return {"saved": [r["ticker"] for r in rows], "day": today}
+    return {
+        "saved": [r["ticker"] for r in rows],
+        "day": today,
+        "rows_count": len(rows)
+    }
 
 
 # =====================
