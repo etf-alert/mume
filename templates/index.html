@@ -330,19 +330,31 @@ async function loadReservedOrders() {
 }
 
 async function cancelReservation(repeat_group) {
-  if (!confirm("이 예약을 전체 취소할까요?")) return;
+  // ✅ 1️⃣ 한 번 더 확인
+  const ok = confirm("⚠️ 이 예약 그룹을 삭제할까요?\n삭제하면 되돌릴 수 없습니다.");
 
-  const res = await authFetch(`/api/queued-orders/group/${repeat_group}`, {
-    method: "DELETE"
-  });
+  if (!ok) return;  // ❌ 취소하면 중단
 
-  if (!res.ok) {
-    alert("취소 실패");
-    return;
+  try {
+    const res = await authFetch(`/api/order/cancel/${repeat_group}`, {
+      method: "DELETE"
+    });
+
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(t);
+    }
+
+    alert("✅ 예약이 삭제되었습니다.");
+
+    loadReservedOrders(); // 🔄 목록 새로고침
+
+  } catch (e) {
+    alert("❌ 삭제 실패\n" + e.message);
+    console.error(e);
   }
-
-  loadReservedOrders();
 }
+
 
 document.addEventListener("DOMContentLoaded", () => {
   if (localStorage.getItem("token")) {
