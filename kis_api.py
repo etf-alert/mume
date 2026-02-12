@@ -123,6 +123,40 @@ def get_overseas_avg_price(ticker: str):
         "total_cost": 0,
         "excg": None
     }
+    
+def get_overseas_buying_power():
+    token = get_access_token()
+    CANO, ACNT = ACCOUNT_NO.split("-")
+
+    url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/inquire-balance"
+
+    headers = {
+        "authorization": f"Bearer {token}",
+        "appkey": APP_KEY,
+        "appsecret": APP_SECRET,
+        "tr_id": "TTTS3012R",
+        "custtype": "P"
+    }
+
+    params = {
+        "CANO": CANO,
+        "ACNT_PRDT_CD": ACNT,
+        "TR_CRCY_CD": "USD",
+        "OVRS_EXCG_CD": "",
+        "CTX_AREA_FK200": "",
+        "CTX_AREA_NK200": ""
+    }
+
+    res = requests.get(url, headers=headers, params=params)
+    res.raise_for_status()
+    data = res.json()
+
+    output2 = data.get("output2") or {}
+
+    # 🔥 주문 가능 금액 (USD)
+    buying_power = float(output2.get("ovrs_ord_psbl_amt", 0))
+
+    return buying_power
 
 # =====================
 # 해외주식 주문
