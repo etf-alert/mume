@@ -568,7 +568,6 @@ async def reserve_order(
             "ticker": order["ticker"],
             "side": order["side"],
             "seed": seed,
-            "avg_price": avg_price,
             "execute_after": execute_at.astimezone(timezone.utc).isoformat(),
             "status": "PENDING",
             "repeat_group": repeat_group,
