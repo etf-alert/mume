@@ -1252,10 +1252,32 @@ def get_reservations():
         .table("queued_orders")
         .select("*")
         .eq("status", "PENDING")
+        .order("repeat_index", desc=False)  # 🔥 정렬 추가
         .execute()
     )
 
     rows = res.data or []
+
+    # 🔥 같은 repeat_group 중 가장 작은 repeat_index만 남기기
+    grouped = {}
+
+    for o in rows:
+        group = o.get("repeat_group")
+
+        if not group:
+            # 그룹 없는 건 그냥 추가
+            grouped[id(o)] = o
+            continue
+
+        if group not in grouped:
+            grouped[group] = o
+        else:
+            # 더 작은 repeat_index가 있으면 교체
+            if o.get("repeat_index", 0) < grouped[group].get("repeat_index", 0):
+                grouped[group] = o
+
+    # 최종 리스트
+    rows = list(grouped.values())
 
     # 🔥 현재 매수 가능 USD
     buying_power = get_overseas_buying_power()
@@ -1266,6 +1288,10 @@ def get_reservations():
 
     for o in rows:
         item = dict(o)
+
+        # 🔥 repeat_label 생성
+        if o.get("repeat_index") and o.get("repeat_total"):
+            item["repeat_label"] = f'{o["repeat_index"]}/{o["repeat_total"]}'
 
         # 🔥 BUY만 계산
         if o["side"].startswith("BUY"):
