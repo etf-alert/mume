@@ -101,16 +101,6 @@
       vertical-align: middle;
     }
 
-    .badge.pre {
-      background: #facc15;
-      color: #000;
-    }
-
-    .badge.post {
-      background: #38bdf8;
-      color: #020617;
-    }
-
     .badge.close {
       background: #64748b;
       color: white;
@@ -133,23 +123,17 @@
     .price-close {
       font-size: 14px;
       font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 4px;
     }
-
-    .price-after {
-      font-size: 13px;
-      color: #c7d2fe;
-      margin-top: 2px;
-    }
-
-    .price-after .badge {
-      margin-right: 4px;
-    }
-
+    
     .small-badge {
       font-size: 9px;       /* 글자 작게 */
-      padding: 1px 4px;     /* 안쪽 여백 줄임 */
+      padding: 0px 4px;     /* 안쪽 여백 줄임 */
       margin-right: 4px;    /* 가격과 간격 줄임 */
       border-radius: 3px;
+      line-height: 1.2;
     }
 
     #pullIndicator {
@@ -339,7 +323,7 @@ const body = document.getElementById("tableBody");
 const sideMap = {
   "BUY_AVG": "평단가 매수 (LOC)",
   "BUY_MARKET": "큰 수 매수 (LOC)",
-  "SELL": "평단가 +10% 매도"
+  "SELL": "평단가 매도 (+10%)"
 };
 
 // 🔥 예약 목록 불러오기 (에러 안전 + 디버그 로그 포함 버전)
@@ -412,7 +396,10 @@ async function loadReservedOrders() {
             : "완료"}
         </td>
         <td>
-          <button onclick="cancelReservation('${o.repeat_group}')">❌</button>
+          <button class="delete-btn"
+                onclick="cancelReservation('${o.repeat_group}')">
+          ✖
+          </button>
         </td>
       `;
 
