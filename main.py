@@ -1046,26 +1046,41 @@ def login_page(request: Request):
 # =====================
 @app.get("/tickers")
 def get_tickers():
-    return {"tickers": WATCHLIST}
-
+    res = supabase_admin.table("watchlist").select("ticker").execute()
+    rows = res.data or []
+    return {"tickers": [r["ticker"] for r in rows]}
 
 @app.post("/tickers")
 def add_ticker(ticker: str = Query(...)):
     t = ticker.upper()
-    if t in WATCHLIST:
-        raise HTTPException(400, "Already exists")
-    WATCHLIST.append(t)
-    save_watchlist(WATCHLIST)
-    return {"added": t}
 
+    # 중복 체크
+    existing = (
+        supabase_admin
+        .table("watchlist")
+        .select("ticker")
+        .eq("ticker", t)
+        .execute()
+    )
+
+    if existing.data:
+        raise HTTPException(400, "Already exists")
+
+    supabase_admin.table("watchlist").insert({
+        "ticker": t
+    }).execute()
+
+    return {"added": t}
 
 @app.delete("/tickers/{ticker}")
 def delete_ticker(ticker: str):
     t = ticker.upper()
-    if t not in WATCHLIST:
-        raise HTTPException(404, "Not found")
-    WATCHLIST.remove(t)
-    save_watchlist(WATCHLIST)
+
+    supabase_admin.table("watchlist")\
+        .delete()\
+        .eq("ticker", t)\
+        .execute()
+
     return {"removed": t}
 
     
@@ -1075,7 +1090,11 @@ def watchlist():
     next_open = next_market_open()
 
     result = []
-    for t in WATCHLIST:
+    res = supabase_admin.table("watchlist").select("ticker").execute()
+    rows = res.data or []
+
+    for r in rows:
+        t = r["ticker"]
         result.append(get_watchlist_item(t))
 
     # ✅ RSI 오름차순 정렬 (낮은 RSI → 높은 RSI)
