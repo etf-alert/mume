@@ -1083,21 +1083,19 @@ def delete_ticker(ticker: str):
 
     return {"removed": t}
 
-    
 @app.get("/watchlist")
 def watchlist():
+    res = supabase_admin.table("watchlist").select("ticker").execute()
+    rows = res.data or []
+
     is_open = is_us_market_open()
     next_open = next_market_open()
 
     result = []
-    res = supabase_admin.table("watchlist").select("ticker").execute()
-    rows = res.data or []
 
     for r in rows:
-        t = r["ticker"]
-        result.append(get_watchlist_item(t))
+        result.append(get_watchlist_item(r["ticker"]))
 
-    # ✅ RSI 오름차순 정렬 (낮은 RSI → 높은 RSI)
     result.sort(key=lambda x: x["rsi"] if x["rsi"] is not None else 999)
 
     return {
