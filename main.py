@@ -890,15 +890,18 @@ def cron_execute_reservations(secret: str = Query(...)):
                 continue
 
             # 🔥 ADDED: 실행 시점 실시간 계좌 조회
-            pos = get_overseas_position(o["ticker"])
-            if not pos:
-                raise RuntimeError("계좌 조회 실패")
+            pos = get_overseas_avg_price(o["ticker"])
 
-            avg_price = float(pos.get("avg_price", 0))  # 🔥 실시간 평균단가
-            qty = float(pos.get("qty", 0))              # 🔥 실시간 보유수량
+            if not pos.get("found"):
+                raise RuntimeError("보유 종목 없음")
 
-            if o["side"] == "SELL" and qty <= 0:
-                raise RuntimeError("보유 수량 없음")
+            # 🔥 MODIFIED: 딕셔너리 구조에 맞게 값 추출
+            avg_price = float(pos.get("avg_price", 0))   # 실시간 평균단가
+            qty = float(pos.get("qty", 0))               # 실시간 보유수량
+            sellable_qty = float(pos.get("sellable_qty", 0))  # 🔥 추가 (매도 가능 수량)
+
+            if o["side"] == "SELL" and sellable_qty <= 0:   # 🔥 MODIFIED
+                raise RuntimeError("매도 가능 수량 없음")
 
             if avg_price <= 0:
                 raise RuntimeError("평균단가 없음")
@@ -906,15 +909,14 @@ def cron_execute_reservations(secret: str = Query(...)):
             # 🔧 현재가 계산 (실시간)
             current_price = resolve_prices(o["ticker"])["base_price"]
 
-            # 🔥 MODIFIED: DB avg_price 대신 실시간 avg_price 사용
             preview = build_order_preview({
                 "side": o["side"],
-                "avg_price": avg_price,   # 🔥 변경
+                "avg_price": avg_price,
                 "current_price": current_price,
                 "seed": o["seed"],
                 "ticker": o["ticker"]
             })
-
+    
             side = "buy" if o["side"].startswith("BUY") else "sell"
 
             kis_res = order_overseas_stock(
@@ -923,7 +925,6 @@ def cron_execute_reservations(secret: str = Query(...)):
                 qty=preview["qty"],
                 side=side
             )
-
             # 🔥 KIS 실패 강제 예외 처리
             if not kis_res or kis_res.get("rt_cd") != "0":
                 raise RuntimeError(
