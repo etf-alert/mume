@@ -501,9 +501,6 @@ def execute_order(order_id: str, user: str = Depends(get_current_user)):
     ORDER_CACHE.pop(order_id, None)
     return {"status": "ok", "result": result}
     
-# =====================
-# 🔥 예약 주문 목록 조회
-# =====================
 @app.post("/api/order/reserve")
 async def reserve_order(
     request: Request,
@@ -516,22 +513,17 @@ async def reserve_order(
     repeat_days = int(body.get("repeat_days", 1))
 
     # =========================
-    # ✅ seed / avg_price 안전 처리
+    # ✅ seed 안전 처리 (🔥 avg_price 제거 — 예약에 필요 없음)
     # =========================
     seed = body.get("seed")
-    avg_price = body.get("avg_price")
 
     if seed is None:
-        raise HTTPException(400, "seed is required")
-
-    if avg_price is None:
-        raise HTTPException(400, "avg_price is required")
+        raise HTTPException(400, "시드금액 필요")
 
     try:
         seed = float(seed)
-        avg_price = float(avg_price)
     except ValueError:
-        raise HTTPException(400, "seed/avg_price must be number")
+        raise HTTPException(400, "seed must be number")
 
     order = ORDER_CACHE.get(order_id)
     if not order:
@@ -541,56 +533,53 @@ async def reserve_order(
         raise HTTPException(400, "예약 시간은 0~360분만 가능")
 
     if repeat_days < 1 or repeat_days > 120:
-        raise HTTPException(400, "repeat_days 범위 오류")
+        raise HTTPException(400, "반복은 1~120까지 가능")
 
     # =========================
     # 🟢 영업일 계산
     # =========================
     now_ny = datetime.now(ny_tz)
 
-    # 🔥 오늘 장 시작 + minutes 계산
     today_execute_time = calculate_execute_at_from_market_open(
         minutes,
         base_date=now_ny.date()
     )
 
-    # 🔥 이미 오늘 시간이 지났으면 다음 거래일부터 시작
+    # 🔥 오늘 시간 지났으면 다음 거래일부터
     if now_ny >= today_execute_time:
         start_date = get_next_trading_day(now_ny.date())
     else:
         start_date = now_ny.date()
 
+    # 🔥 trading_days 한 번만 계산 (성능 안정화 핵심)
     trading_days = get_next_n_trading_days(start_date, repeat_days)
 
     repeat_group = str(uuid4())
-    rows = []
 
-    for idx, day in enumerate(trading_days, start=1):
-
-        execute_at = calculate_execute_at_from_market_open(
-            minutes,
-            base_date=day
-        )
-
-        # 🔥 수정: 과거 시간이어도 continue 하지 않음
-        # (40번 입력하면 무조건 40개 생성)
-
-        rows.append({
+    # 🔥 리스트 컴프리헨션으로 생성 (약간 더 빠름)
+    rows = [
+        {
             "user_id": user,
             "ticker": order["ticker"],
             "side": order["side"],
             "seed": seed,
-            "execute_after": execute_at.astimezone(timezone.utc).isoformat(),
+            "execute_after": calculate_execute_at_from_market_open(
+                minutes,
+                base_date=day
+            ).astimezone(timezone.utc).isoformat(),
             "status": "PENDING",
             "repeat_group": repeat_group,
-            "repeat_index": idx,
-            "repeat_total": repeat_days   # 🔥 추가 (진짜 핵심)
-        })
+            "repeat_index": idx + 1,
+            "repeat_total": repeat_days
+        }
+        for idx, day in enumerate(trading_days)
+    ]
 
     if not rows:
         raise HTTPException(400, "유효한 예약 날짜 없음")
 
     try:
+        # 🔥 bulk insert (이미 되어있지만 명확히 유지)
         supabase_admin.table("queued_orders").insert(rows).execute()
     except Exception as e:
         raise HTTPException(500, f"예약 저장 실패: {e}")
@@ -599,7 +588,7 @@ async def reserve_order(
 
     return {
         "status": "reserved",
-        "repeat_days": repeat_days,   # 🔥 수정 (len(rows) → repeat_days)
+        "repeat_days": repeat_days,
         "first_execute_at": rows[0]["execute_after"],
         "repeat_group": repeat_group
     }
@@ -1255,19 +1244,18 @@ def send_order_fail_telegram(order: dict, error_msg: str, db):
         f"회차: {order['repeat_index']}/{total}\n"
         f"실행 예정 시각: {execute_after_str}"
     )
-
+    
     send_telegram_message(message)
 
 @app.get("/reservations")
 def get_reservations(user: str = Depends(get_current_user)):
-
     res = (
         supabase_admin
         .table("queued_orders")
         .select("*")
         .eq("user_id", user)
         .eq("status", "PENDING")
-        .order("repeat_index", desc=False)  # 🔥 정렬 추가
+        .order("repeat_index", desc=False)
         .execute()
     )
 
@@ -1275,32 +1263,24 @@ def get_reservations(user: str = Depends(get_current_user)):
 
     # 🔥 같은 repeat_group 중 가장 작은 repeat_index만 남기기
     grouped = {}
-
     for o in rows:
         group = o.get("repeat_group")
 
         if not group:
-            # 그룹 없는 건 그냥 추가
             grouped[id(o)] = o
             continue
 
         if group not in grouped:
             grouped[group] = o
         else:
-            # 더 작은 repeat_index가 있으면 교체
             if o.get("repeat_index", 0) < grouped[group].get("repeat_index", 0):
                 grouped[group] = o
 
-    # 최종 리스트
     rows = list(grouped.values())
 
-    # 🔥 현재 매수 가능 USD
-    buying_power = get_overseas_buying_power()
-    print("🔥 현재 buying_power:", buying_power)
-
+    # 🔥 수정: buying_power 한 번만 조회
     raw_buying_power = get_overseas_buying_power()
 
-    # 🔥 안전하게 float 변환
     try:
         if isinstance(raw_buying_power, dict):
             buying_power = float(raw_buying_power.get("buying_power", 0))
@@ -1308,9 +1288,8 @@ def get_reservations(user: str = Depends(get_current_user)):
             buying_power = float(raw_buying_power)
     except:
         buying_power = 0.0
-        
-    total_required_amount = 0.0
 
+    total_required_amount = 0.0
     enriched_rows = []
 
     for o in rows:
@@ -1320,23 +1299,10 @@ def get_reservations(user: str = Depends(get_current_user)):
         if o.get("repeat_index") and o.get("repeat_total"):
             item["repeat_label"] = f'{o["repeat_index"]}/{o["repeat_total"]}'
 
-        # 🔥 BUY만 계산
+        # 🔥🔥 수정: 가격 조회 완전 제거 → seed/80 기준 계산
         if o["side"].startswith("BUY"):
-
-            current_price = resolve_prices(o["ticker"])["base_price"]
-
-            preview = build_order_preview({
-                "side": o["side"],
-                "avg_price": current_price,  # avg_price DB 제거했으니 현재가 기준
-                "current_price": current_price,
-                "seed": o["seed"],
-                "ticker": o["ticker"]
-            })
-
-            required_amount = preview["price"] * preview["qty"]
-
+            required_amount = float(o["seed"]) / 80.0  # ✅ 최대 필요금액
             total_required_amount += required_amount
-
             item["required_amount"] = required_amount
         else:
             item["required_amount"] = None
@@ -1352,6 +1318,7 @@ def get_reservations(user: str = Depends(get_current_user)):
         "total_shortage": total_shortage,
         "reservations": enriched_rows
     }
+
 
 @app.get("/chart-page", response_class=HTMLResponse)
 def chart_page(request: Request):
