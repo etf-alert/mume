@@ -145,6 +145,13 @@
       margin-right: 4px;
     }
 
+    .small-badge {
+      font-size: 9px;       /* 글자 작게 */
+      padding: 1px 4px;     /* 안쪽 여백 줄임 */
+      margin-right: 4px;    /* 가격과 간격 줄임 */
+      border-radius: 3px;
+    }
+
     #pullIndicator {
       position: fixed;
       top: -40px;
@@ -176,6 +183,14 @@
       white-space: nowrap;
     }
 
+    #reserved-orders h3 {
+      font-size: 22px;
+    }
+
+    h1 {
+      font-size: 20px;   /* 기존보다 작게 */
+    }
+
   </style>
 </head>
 <body>
@@ -193,7 +208,7 @@
 <!-- ===================== -->
 <div id="reserved-orders" class="box">
   <h3>⏰ 예약 주문</h3>
-  <div id="reservation-summary" style="margin-bottom:10px; font-size:14px;"></div>
+  <div id="reservation-summary" style="margin-bottom:10px; font-size:18px; font-weight:600;"></div>
   <table>
     <thead>
       <tr>
@@ -359,12 +374,12 @@ async function loadReservedOrders() {
     // 🔥 summaryDiv 존재 확인 후 렌더
     if (summaryDiv) {
       summaryDiv.innerHTML = `
-        💰 매수 가능: $${buyingPower.toFixed(2)}<br>
-        📌 전체 필요금액: $${totalRequired.toFixed(2)}<br>
+        💰 계좌 잔고: $${buyingPower.toFixed(2)}<br>
+        📌 오늘 필요액: $${totalRequired.toFixed(2)}<br>
         ${
           totalShortage > 0
-            ? `⚠ <span style="color:#ef4444;">총 부족금액: $${totalShortage.toFixed(2)}</span>`
-            : `✅ 부족 없음`
+            ? `⚠ <span style="color:#ef4444;">총 부족액: $${totalShortage.toFixed(2)}</span>`
+            : `✅ 부족액 없음`
         }
       `;
     }
@@ -384,7 +399,9 @@ async function loadReservedOrders() {
 
       tr.innerHTML = `
         <td>${o.ticker ?? "-"}</td>
-        <td>${sideMap[o.side] ?? o.side ?? "-"}</td>
+        <td style="color:${sideColor}; font-weight:700;">
+          ${sideMap[o.side] ?? o.side ?? "-"}
+        </td>
         <td>${formatKoreanShortDate(o.execute_after)}</td>
         <td style="font-weight:600;">
           ${o.repeat_label ?? o.status ?? "-"}
@@ -482,26 +499,20 @@ async function loadData() {
       </td>
 
     <td class="cell">
-  <!-- 기준 현재가 (항상 표시) -->
-  <div class="price-close">
-    ${item.current_price}
-  </div>
-  <div class="change ${item.current_change < 0 ? 'down' : 'up'}">
-    (${item.current_change > 0 ? '+' : ''}${item.current_change},
-     ${item.current_change_pct > 0 ? '+' : ''}${item.current_change_pct}%)
-  </div>
+      <div class="price-close">
+        ${
+          item.price_source === "CLOSE"
+            ? `<span class="badge close small-badge">CLOSE</span>`
+            : ``
+        }
+        ${item.current_price}
+      </div>
 
-  ${
-    item.price_source === "CLOSE"
-      ? `
-        <div class="price-after">
-          <span class="badge close">CLOSE</span>
-        </div>
-      `
-      : ``
-  }
-
-</td>
+      <div class="change ${item.current_change < 0 ? 'down' : 'up'}">
+        (${item.current_change > 0 ? '+' : ''}${item.current_change},
+         ${item.current_change_pct > 0 ? '+' : ''}${item.current_change_pct}%)
+      </div>
+    </td>
 
       <!-- ✅ RSI 컬럼 -->
       <td class="cell">
