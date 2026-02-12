@@ -664,7 +664,6 @@ def get_watchlist_item(ticker: str):
         "rsi_change_pct": rsi_change_pct,
     }
 
-    print("WATCHLIST ITEM DEBUG:", item)
     return item
 
 def cleanup_order_cache():
@@ -1206,7 +1205,6 @@ def get_reservations(user: str = Depends(get_current_user)):
 
     # 🔥 수정: buying_power 한 번만 조회
     raw_buying_power = get_overseas_buying_power()
-    print("🔥 raw_buying_power:", raw_buying_power)
 
     try:
         if isinstance(raw_buying_power, dict):
