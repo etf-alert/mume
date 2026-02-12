@@ -15,7 +15,7 @@ import json
 import os
 import yfinance as yf
 import pandas as pd
-from kis_api import order_overseas_stock, get_overseas_avg_price
+from kis_api import order_overseas_stock, get_overseas_avg_price, get_overseas_buying_power
 from uuid import UUID, uuid4
 from market_time import is_us_market_open, is_us_premarket, is_us_postmarket, next_market_open, get_next_trading_day, get_next_n_trading_days
 from alpaca.data.historical import StockHistoricalDataClient
