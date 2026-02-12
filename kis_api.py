@@ -124,40 +124,41 @@ def get_overseas_avg_price(ticker: str):
         "excg": None
     }
     
-def get_overseas_buying_power():
+def get_overseas_buying_power(ticker="AAPL", price="1"):
+
     token = get_access_token()
     CANO, ACNT = ACCOUNT_NO.split("-")
 
-    url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/inquire-balance"
+    url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/inquire-psamount"
 
     headers = {
+        "Content-Type": "application/json; charset=utf-8",
         "authorization": f"Bearer {token}",
         "appkey": APP_KEY,
         "appsecret": APP_SECRET,
-        "tr_id": "TTTS3012R",
+        "tr_id": "TTTS3007R",   # 🔥 실계좌
         "custtype": "P"
     }
 
     params = {
         "CANO": CANO,
         "ACNT_PRDT_CD": ACNT,
-        "TR_CRCY_CD": "USD",
-        "OVRS_EXCG_CD": "",
-        "CTX_AREA_FK200": "",
-        "CTX_AREA_NK200": ""
+        "OVRS_EXCG_CD": "NASD",   # 🔥 나스닥 기준
+        "OVRS_ORD_UNPR": price,   # 🔥 임시 주문단가 (1달러로 넣으면 됨)
+        "ITEM_CD": ticker         # 🔥 아무 해외종목 하나
     }
 
     res = requests.get(url, headers=headers, params=params)
     res.raise_for_status()
     data = res.json()
 
-    output2 = data.get("output2")
+    if data.get("rt_cd") != "0":
+        print("❌ KIS 오류:", data)
+        return 0.0
 
-    # 🔥 수정: output2가 리스트인 경우 처리
-    if isinstance(output2, list) and len(output2) > 0:
-        buying_power = float(output2[0].get("ovrs_ord_psbl_amt", 0))
-    else:
-        buying_power = 0.0
+    output = data.get("output") or {}
+
+    buying_power = float(output.get("ovrs_ord_psbl_amt", 0))
 
     return buying_power
 
