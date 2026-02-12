@@ -1244,6 +1244,62 @@ def send_order_fail_telegram(order: dict, error_msg: str, db):
 
     send_telegram_message(message)
 
+@app.get("/reservations")
+def get_reservations():
+
+    res = (
+        supabase_admin
+        .table("queued_orders")
+        .select("*")
+        .eq("status", "PENDING")
+        .execute()
+    )
+
+    rows = res.data or []
+
+    # 🔥 현재 매수 가능 USD
+    buying_power = get_overseas_buying_power()
+
+    total_required_amount = 0.0
+
+    enriched_rows = []
+
+    for o in rows:
+        item = dict(o)
+
+        # 🔥 BUY만 계산
+        if o["side"].startswith("BUY"):
+
+            current_price = resolve_prices(o["ticker"])["base_price"]
+
+            preview = build_order_preview({
+                "side": o["side"],
+                "avg_price": current_price,  # avg_price DB 제거했으니 현재가 기준
+                "current_price": current_price,
+                "seed": o["seed"],
+                "ticker": o["ticker"]
+            })
+
+            required_amount = preview["price"] * preview["qty"]
+
+            total_required_amount += required_amount
+
+            item["required_amount"] = required_amount
+        else:
+            item["required_amount"] = None
+
+        enriched_rows.append(item)
+
+    # 🔥 전체 부족 금액 계산
+    total_shortage = max(0, total_required_amount - buying_power)
+
+    return {
+        "buying_power": buying_power,
+        "total_required_amount": total_required_amount,
+        "total_shortage": total_shortage,
+        "reservations": enriched_rows
+    }
+
 @app.get("/chart-page", response_class=HTMLResponse)
 def chart_page(request: Request):
     return templates.TemplateResponse("chart.html", {"request": request})
