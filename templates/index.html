@@ -277,6 +277,16 @@ async function authFetch(url, options = {}) {
   return fetch(url, options);
 }
 
+  function getSideColor(side) {
+    if (side.startsWith("BUY")) {
+      return "#e0527d";   // 🔥 매수
+    }
+    if (side.startsWith("SELL")) {
+      return "#3b82f6";   // 🔵 매도
+    }
+    return "#ffffff";
+  }
+
   function addTicker() {
     const input = document.getElementById("tickerInput");
     const ticker = input.value.trim();
@@ -371,6 +381,7 @@ async function loadReservedOrders() {
 
     reservations.forEach(o => {
       const tr = document.createElement("tr");
+      const sideColor = getSideColor(o.side);
 
       tr.innerHTML = `
         <td>${o.ticker ?? "-"}</td>
