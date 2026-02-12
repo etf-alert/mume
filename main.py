@@ -189,69 +189,6 @@ def login(data: dict):
     return res
 
 # =====================
-# 🔥 예약 주문 목록 조회 (index용)
-# =====================
-@app.get("/api/order/queued-orders")
-def list_queued_orders(user: str = Depends(get_current_user)):
-    res = (
-        supabase_admin
-        .table("queued_orders")
-        .select("""
-            id,
-            ticker,
-            side,
-            execute_after,
-            status,
-            repeat_group,
-            repeat_index
-        """)
-        .eq("user_id", user)
-        .eq("status", "PENDING")
-        .order("execute_after")
-        .execute()
-    )
-
-    rows = res.data or []
-
-    # 🔥 repeat_group별 가장 빠른 것만 남긴다
-    group_first = {}
-    for r in rows:
-        g = r["repeat_group"]
-        if g not in group_first:
-            group_first[g] = r
-
-    result = list(group_first.values())
-
-    # 🔥 repeat_label 계산
-    for r in result:
-        total = get_repeat_total(supabase_admin, r["repeat_group"])
-
-        # =========================
-        # ✅ 수정: DONE 개수 계산
-        # =========================
-        done_res = (
-            supabase_admin
-            .table("queued_orders")
-            .select("id", count="exact")
-            .eq("repeat_group", r["repeat_group"])
-            .eq("status", "DONE")
-            .execute()
-        )
-        done = done_res.count or 0   # ✅ 수정
-
-        # =========================
-        # ✅ 수정: 1부터 시작하도록 보정
-        # =========================
-        display_progress = min(done + 1, total)  # ✅ 수정
-
-        r["repeat_label"] = (
-            f"{display_progress}/{total}"
-            if total > 1 else None
-        )
-
-    return result
-
-# =====================
 # 🔥 repeat_group 전체 개수 계산 (공통)
 # =====================
 def get_repeat_total(db, repeat_group: str) -> int:
