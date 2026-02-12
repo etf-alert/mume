@@ -72,4 +72,36 @@ def next_market_open(base_date=None):
     # ✅ 그대로 반환 (tz 유지)
     return schedule.iloc[0]["market_open"]
 
+def get_next_trading_day(base_date=None):
+    if base_date is None:
+        base_date = datetime.now(ny_tz).date()
+    elif isinstance(base_date, datetime):
+        base_date = base_date.date()
+
+    schedule = nyse.schedule(
+        start_date=base_date + timedelta(days=1),
+        end_date=base_date + timedelta(days=7)
+    )
+
+    if schedule.empty:
+        return None
+
+    return schedule.index[0].date()
+
+def get_next_n_trading_days(start_date, n):
+    if isinstance(start_date, datetime):
+        start_date = start_date.date()
+
+    schedule = nyse.schedule(
+        start_date=start_date,
+        end_date=start_date + timedelta(days=30)
+    )
+
+    if schedule.empty:
+        return []
+
+    days = schedule.index.date.tolist()
+
+    return days[:n]
+
 
