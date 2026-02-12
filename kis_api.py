@@ -144,8 +144,8 @@ def get_overseas_buying_power(ticker="AAPL", price="1"):
         "CANO": CANO,
         "ACNT_PRDT_CD": ACNT,
         "OVRS_EXCG_CD": "NASD",   # 🔥 나스닥 기준
-        "OVRS_ORD_UNPR": price,   # 🔥 임시 주문단가 (1달러로 넣으면 됨)
-        "ITEM_CD": ticker         # 🔥 아무 해외종목 하나
+        "OVRS_ORD_UNPR": "1",   # 🔥 임시 주문단가 (1달러로 넣으면 됨)
+        "ITEM_CD": "AAPL"        # 🔥 아무 해외종목 하나
     }
 
     res = requests.get(url, headers=headers, params=params)
