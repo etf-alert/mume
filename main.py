@@ -891,7 +891,6 @@ def cron_execute_reservations(secret: str = Query(...)):
 
             # 🔥 ADDED: 실행 시점 실시간 계좌 조회
             pos = get_overseas_avg_price(o["ticker"])
-
             if not pos.get("found"):
                 raise RuntimeError("보유 종목 없음")
 
@@ -919,12 +918,21 @@ def cron_execute_reservations(secret: str = Query(...)):
     
             side = "buy" if o["side"].startswith("BUY") else "sell"
 
+            if side == "sell":
+                order_qty = min(preview["qty"], sellable_qty)  
+            else:
+                order_qty = preview["qty"]
+
+            if order_qty <= 0:
+                raise RuntimeError("주문 수량 0")
+
             kis_res = order_overseas_stock(
                 ticker=o["ticker"],
                 price=preview["price"],
-                qty=preview["qty"],
+                qty=order_qty,   
                 side=side
             )
+
             # 🔥 KIS 실패 강제 예외 처리
             if not kis_res or kis_res.get("rt_cd") != "0":
                 raise RuntimeError(
@@ -941,7 +949,7 @@ def cron_execute_reservations(secret: str = Query(...)):
             send_order_success_telegram(
                 order=o,
                 executed_price=preview["price"],
-                executed_qty=preview["qty"],
+                executed_qty=order_qty,
                 executed_at=now,
                 kis_msg=kis_res.get("msg1"),
                 db=supabase_admin
