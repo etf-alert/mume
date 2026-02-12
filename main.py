@@ -934,30 +934,24 @@ def cron_execute_reservations(secret: str = Query(...)):
 # =====================
 # 🔥 예약 주문 삭제 API
 # =====================
-# =====================
-# 🔥 repeat_group 전체 삭제
-# =====================
-@app.delete("/api/queued-orders/group/{group_id}")
-def delete_repeat_group(
-    group_id: str,
+@app.delete("/reservations/group/{repeat_group}")
+def delete_reservation_group(
+    repeat_group: str,
     user: str = Depends(get_current_user)
 ):
-    res = (
-        supabase_admin
-        .table("queued_orders")
-        .delete()
-        .eq("repeat_group", group_id)
-        .eq("user_id", user)
-        .eq("status", "PENDING")   # 🔒 실행 전만 삭제
-        .execute()
-    )
+    try:
+        supabase_admin \
+            .table("queued_orders") \
+            .delete() \
+            .eq("user_id", user) \
+            .eq("repeat_group", repeat_group) \
+            .eq("status", "PENDING") \
+            .execute()
 
-    if not res.data:
-        raise HTTPException(404, "삭제할 예약 없음")
+        return {"status": "deleted", "repeat_group": repeat_group}
 
-    return {
-        "deleted_count": len(res.data)
-    }
+    except Exception as e:
+        raise HTTPException(500, f"삭제 실패: {e}")
 
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
