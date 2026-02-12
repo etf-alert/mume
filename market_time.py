@@ -78,9 +78,10 @@ def get_next_trading_day(base_date=None):
     elif isinstance(base_date, datetime):
         base_date = base_date.date()
 
+    # 🔥 연휴 대비 여유있게 14일
     schedule = nyse.schedule(
         start_date=base_date + timedelta(days=1),
-        end_date=base_date + timedelta(days=7)
+        end_date=base_date + timedelta(days=14)
     )
 
     if schedule.empty:
@@ -88,13 +89,17 @@ def get_next_trading_day(base_date=None):
 
     return schedule.index[0].date()
 
+    
 def get_next_n_trading_days(start_date, n):
     if isinstance(start_date, datetime):
         start_date = start_date.date()
 
+    # 🔥 필요한 날짜만큼 넉넉히 확보 (n * 2 정도면 충분)
+    end_date = start_date + timedelta(days=n * 2)
+
     schedule = nyse.schedule(
         start_date=start_date,
-        end_date=start_date + timedelta(days=30)
+        end_date=end_date
     )
 
     if schedule.empty:
@@ -102,6 +107,7 @@ def get_next_n_trading_days(start_date, n):
 
     days = schedule.index.date.tolist()
 
+    # 🔥 정확히 n개만 반환
     return days[:n]
 
 
