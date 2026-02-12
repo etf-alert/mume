@@ -151,10 +151,13 @@ def get_overseas_buying_power():
     res.raise_for_status()
     data = res.json()
 
-    output2 = data.get("output2") or {}
+    output2 = data.get("output2")
 
-    # 🔥 주문 가능 금액 (USD)
-    buying_power = float(output2.get("ovrs_ord_psbl_amt", 0))
+    # 🔥 수정: output2가 리스트인 경우 처리
+    if isinstance(output2, list) and len(output2) > 0:
+        buying_power = float(output2[0].get("ovrs_ord_psbl_amt", 0))
+    else:
+        buying_power = 0.0
 
     return buying_power
 
