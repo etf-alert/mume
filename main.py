@@ -1189,7 +1189,7 @@ def send_order_success_telegram(
         f"체결가: ${executed_price}\n"
         f"수량: {executed_qty} 주\n"
         f"매수액: ${executed_price * executed_qty:,.2f}\n\n"
-        f"진행률: {order['repeat_index']}/{total}\n"
+        f"회차: {order['repeat_index']}/{total}\n"
         f"실행 시각: {executed_at_str}"
     )
     if kis_msg:
@@ -1213,7 +1213,7 @@ def send_order_fail_telegram(order: dict, error_msg: str, db):
         f"종목: {order['ticker']}\n"
         f"구분: {order['side']}\n"
         f"사유: {error_msg}\n\n"
-        f"진행률: {order['repeat_index']}/{total}\n"
+        f"회차: {order['repeat_index']}/{total}\n"
         f"실행 예정 시각: {execute_after_str}"
     )
 
