@@ -398,26 +398,24 @@ def get_yf_daily_closes(ticker: str, period="6mo") -> list[float]:
     return close.astype(float).tolist()
 
 # =====================
-# 🔧 FIX: order_preview 로직 분리 (순수 함수)
-# =====================
-# =====================
-# 🔧 FIX: 순수 가격/수량 계산 함수 (API / Cron 공용)
-# =====================
 def build_order_preview(data: dict):
     side = data["side"]
     avg = float(data["avg_price"])
     cur = float(data["current_price"])
     seed = float(data["seed"])
-    ticker = data["ticker"]
 
     price_type = None
     message = None
+    qty = None
 
     if side == "BUY_MARKET":
         price = round(min(avg * 1.05, cur * 1.15), 2)
         qty = int((seed / 80) // price)
         price_type = "LOC"
         message = "큰 수 매수 (LOC)"
+        
+        if qty <= 0:
+            raise ValueError("수량 0")
 
     elif side == "BUY_AVG":
         price = round(avg, 2)
@@ -425,27 +423,24 @@ def build_order_preview(data: dict):
         price_type = "LOC"
         message = "평단가 매수 (LOC)"
 
-    elif side == "SELL":
-        pos = get_overseas_avg_price(ticker)
-        qty = pos["qty"]
         if qty <= 0:
-            raise ValueError("매도 가능 수량 없음")
+            raise ValueError("수량 0")
 
+    elif side == "SELL":
+        # 🔥 계좌 조회 제거 (cron에서 처리)
         target = round(avg * 1.10, 2)
+
         if cur > target:
             price = round(cur, 2)
             price_type = "MARKET_BETTER"
-            message = "현재가로 매도"
+            message = "목표가 초과 → 현재가로 매도"
         else:
             price = target
             price_type = "TARGET"
-            message = "목표가 매도"
+            message = "평단가+10% 매도"
 
     else:
         raise ValueError("invalid side")
-
-    if qty <= 0:
-        raise ValueError("수량 0")
 
     return {
         "price": price,
@@ -453,7 +448,6 @@ def build_order_preview(data: dict):
         "price_type": price_type,
         "message": message
     }
-
 
 @app.post("/api/order/preview")
 def order_preview(
@@ -919,7 +913,7 @@ def cron_execute_reservations(secret: str = Query(...)):
             side = "buy" if o["side"].startswith("BUY") else "sell"
 
             if side == "sell":
-                order_qty = min(preview["qty"], sellable_qty)  
+                order_qty = int(sellable_qty)  
             else:
                 order_qty = preview["qty"]
 
