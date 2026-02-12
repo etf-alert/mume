@@ -518,24 +518,24 @@ async def reserve_order(
 ):
     body = await request.json()
 
-    order_id = body.get("order_id")  # ✅ 수정 (직접 접근 제거)
-    minutes = int(body.get("execute_after_minutes", 0))  # ✅ 수정
+    order_id = body.get("order_id")
+    minutes = int(body.get("execute_after_minutes", 0))
     repeat_days = int(body.get("repeat_days", 1))
 
     # =========================
-    # ✅ NEW: seed / avg_price 안전 처리
+    # ✅ seed / avg_price 안전 처리
     # =========================
-    seed = body.get("seed")            # ✅ 수정
-    avg_price = body.get("avg_price")  # ✅ 수정
+    seed = body.get("seed")
+    avg_price = body.get("avg_price")
 
     if seed is None:
-        raise HTTPException(400, "seed is required")  # ✅ 수정
+        raise HTTPException(400, "seed is required")
 
     if avg_price is None:
-        raise HTTPException(400, "avg_price is required")  # ✅ 수정
+        raise HTTPException(400, "avg_price is required")
 
     try:
-        seed = float(seed)          # ✅ 타입 강제 변환
+        seed = float(seed)
         avg_price = float(avg_price)
     except ValueError:
         raise HTTPException(400, "seed/avg_price must be number")
@@ -560,35 +560,31 @@ async def reserve_order(
     rows = []
 
     for idx, day in enumerate(trading_days, start=1):
+
         execute_at = calculate_execute_at_from_market_open(
             minutes,
             base_date=day
         )
 
-        if execute_at <= datetime.now(timezone.utc):
-            continue
+        # 🔥 수정: 과거 시간이어도 continue 하지 않음
+        # (40번 입력하면 무조건 40개 생성)
 
         rows.append({
             "user_id": user,
             "ticker": order["ticker"],
             "side": order["side"],
-
-            # ✅ 수정: 안전 변수 사용
             "seed": seed,
             "avg_price": avg_price,
-
             "execute_after": execute_at.astimezone(timezone.utc).isoformat(),
             "status": "PENDING",
             "repeat_group": repeat_group,
-            "repeat_index": idx
+            "repeat_index": idx,
+            "repeat_total": repeat_days   # 🔥 추가 (진짜 핵심)
         })
 
     if not rows:
         raise HTTPException(400, "유효한 예약 날짜 없음")
 
-    # =========================
-    # 🟢 다건 insert
-    # =========================
     try:
         supabase_admin.table("queued_orders").insert(rows).execute()
     except Exception as e:
@@ -598,7 +594,7 @@ async def reserve_order(
 
     return {
         "status": "reserved",
-        "repeat_days": len(rows),
+        "repeat_days": repeat_days,   # 🔥 수정 (len(rows) → repeat_days)
         "first_execute_at": rows[0]["execute_after"],
         "repeat_group": repeat_group
     }
