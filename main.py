@@ -1281,6 +1281,7 @@ def get_reservations():
 
     # 🔥 현재 매수 가능 USD
     buying_power = get_overseas_buying_power()
+    print("🔥 현재 buying_power:", buying_power)
 
     total_required_amount = 0.0
 
