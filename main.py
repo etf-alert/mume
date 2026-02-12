@@ -17,10 +17,9 @@ import yfinance as yf
 import pandas as pd
 from kis_api import order_overseas_stock, get_overseas_avg_price
 from uuid import UUID, uuid4
-from market_time import is_us_market_open, next_market_open
+from market_time import is_us_market_open, is_us_premarket, is_us_postmarket, next_market_open, get_next_trading_day, get_next_n_trading_days
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockLatestTradeRequest, StockSnapshotRequest
-from market_time import (is_us_market_open,is_us_premarket,is_us_postmarket,)
 import pandas_market_calendars as mcal
 
 # =====================
@@ -556,7 +555,7 @@ async def reserve_order(
     )
 
     # 🔥 이미 오늘 시간이 지났으면 다음 거래일부터 시작
-    if now_ny > today_execute_time:
+    if now_ny >= today_execute_time:
         start_date = get_next_trading_day(now_ny.date())
     else:
         start_date = now_ny.date()
