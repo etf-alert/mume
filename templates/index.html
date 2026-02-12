@@ -193,6 +193,7 @@
 <!-- ===================== -->
 <div id="reserved-orders" class="box">
   <h3>⏰ 예약 주문</h3>
+  <div id="reservation-summary" style="margin-bottom:10px; font-size:14px;"></div>
   <table>
     <thead>
       <tr>
@@ -325,9 +326,28 @@ async function loadReservedOrders() {
   console.log("📦 queued-orders 응답 데이터:", data);
 
   const tbody = document.getElementById("reserved-orders-body");
+  const summaryDiv = document.getElementById("reservation-summary");
+
   tbody.innerHTML = "";
 
-  if (data.length === 0) {
+  const reservations = data.reservations ?? [];
+
+  // 🔥 상단 요약 표시
+  const buyingPower = data.buying_power ?? 0;
+  const totalRequired = data.total_required_amount ?? 0;
+  const totalShortage = data.total_shortage ?? 0;
+
+  summaryDiv.innerHTML = `
+    💰 매수 가능: $${buyingPower.toFixed(2)}<br>
+    📌 전체 필요금액: $${totalRequired.toFixed(2)}<br>
+    ${
+      totalShortage > 0
+        ? `⚠ <span style="color:#ef4444;">총 부족금액: $${totalShortage.toFixed(2)}</span>`
+        : `✅ 부족 없음`
+    }
+  `;
+
+  if (reservations.length === 0) {
     tbody.innerHTML = `
       <tr>
         <td colspan="6" class="cell">예약된 주문 없음</td>
@@ -336,32 +356,27 @@ async function loadReservedOrders() {
     return;
   }
 
-  data.forEach(o => {
+  reservations.forEach(o => {
     const tr = document.createElement("tr");
-
     tr.innerHTML = `
       <td>${o.ticker}</td>
       <td>${sideMap[o.side] ?? o.side}</td>
-      <td>
-        ${formatKoreanShortDate(o.execute_after)}  <!-- ✅ 시작일 -->
-      </td>
+      <td>${formatKoreanShortDate(o.execute_after)}</td>
       <td style="font-weight:600;">
         ${o.repeat_label ?? o.status}
       </td>
       <td>
-      ${o.execute_after
-        ? formatKoreanShortDate(o.execute_after)   <!-- ✅ 다음 실행일 -->
-        : "완료"}
+        ${o.execute_after
+          ? formatKoreanShortDate(o.execute_after)
+          : "완료"}
       </td>
       <td>
         <button onclick="cancelReservation('${o.repeat_group}')">❌</button>
       </td>
     `;
-
     tbody.appendChild(tr);
   });
 }
-
 
 async function cancelReservation(repeat_group) {
   // ✅ 1️⃣ 한 번 더 확인
