@@ -321,26 +321,18 @@ const sideMap = {
 // 🔥 예약 목록 불러오기 (에러 안전 + 디버그 로그 포함 버전)
 async function loadReservedOrders() {
 
-  console.log("🔥 loadReservedOrders 시작"); // 🔥 디버그 로그 추가
-
   try {  // 🔥 try/catch 추가
 
     const res = await authFetch("/reservations");
-    console.log("🔥 /reservations 응답 객체:", res); // 🔥 응답 확인용
-
     if (!res.ok) {
-      console.error("❌ /reservations 응답 실패:", res.status);
       return;
     }
 
     const data = await res.json();
-    console.log("📦 queued-orders 응답 데이터:", data);
-
     const tbody = document.getElementById("reserved-orders-body");
     const summaryDiv = document.getElementById("reservation-summary");
 
     if (!tbody) {
-      console.error("❌ reserved-orders-body 없음");
       return;
     }
 
@@ -413,7 +405,7 @@ async function cancelReservation(repeat_group) {
   if (!ok) return;  // ❌ 취소하면 중단
 
   try {
-    const res = await authFetch(`/api/queued-orders/group/${repeat_group}`, {
+    const res = await authFetch(`/reservations/group/${repeat_group}`, {
       method: "DELETE"
     });
 
@@ -431,7 +423,6 @@ async function cancelReservation(repeat_group) {
     console.error(e);
   }
 }
-
 
 document.addEventListener("DOMContentLoaded", () => {
   if (localStorage.getItem("token")) {
