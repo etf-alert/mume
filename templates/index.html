@@ -246,7 +246,6 @@ async function login() {
   });
 
   const data = await res.json();
-  console.log("WATCHLIST RESPONSE:", data);
 
   if (!res.ok) {
     document.getElementById("login-status").innerText = "로그인 실패";
@@ -462,7 +461,6 @@ async function loadData() {
   }
 
   const data = await res.json();
-  console.log("📊 WATCHLIST API RESPONSE:", data);
   const items = data.items ?? [];
   
   if (items.length === 0) {
