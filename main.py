@@ -600,18 +600,6 @@ async def reserve_order(
 # =====================
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 # =====================
-# Watchlist 파일
-# =====================
-WATCHLIST_FILE = "watchlist.json"
-def load_watchlist():
-    if os.path.exists(WATCHLIST_FILE):
-        with open(WATCHLIST_FILE, "r") as f:
-            return json.load(f)
-    return ["TQQQ", "SOXL", "FNGU", "UPRO"]
-def save_watchlist(data):
-    with open(WATCHLIST_FILE, "w") as f:
-        json.dump(data, f)
-WATCHLIST = load_watchlist()
 
 # =====================
 # RSI (wilder)
@@ -791,8 +779,12 @@ def cron_save(secret: str = Query(...)):
     today = now.date().isoformat()
 
     res = supabase_admin.table("watchlist").select("ticker").execute()
-    rows = res.data or []
-    tickers = [r["ticker"] for r in rows]
+    watchlist_rows = res.data or []
+    tickers = [r["ticker"] for r in watchlist_rows]
+
+    if not tickers:
+        return {"status": "no tickers"}
+
     tickers_str = " ".join(tickers)
 
     data = yf.download(
@@ -802,10 +794,11 @@ def cron_save(secret: str = Query(...)):
         progress=False
     )
 
-    # =====================
-    # 🔁 워치리스트 순회
-    # =====================
-    for t in WATCHLIST:
+    rows = []
+    
+    # 🔥 DB에서 가져온 ticker 리스트 사용
+    for t in tickers:
+
         try:
             # =====================
             # 📊 Finviz RSI
