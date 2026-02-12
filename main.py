@@ -1183,10 +1183,10 @@ def send_order_success_telegram(
     executed_at_str = executed_at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
 
     message = (
-        "✅ 예약 주문 체결\n\n"
+        "✅ 예약 주문 성공\n\n"
         f"종목: {order['ticker']}\n"
         f"구분: {order['side']}\n"
-        f"체결가: ${executed_price}\n"
+        f"지정가: ${executed_price}\n"
         f"수량: {executed_qty} 주\n"
         f"매수액: ${executed_price * executed_qty:,.2f}\n\n"
         f"회차: {order['repeat_index']}/{total}\n"
