@@ -580,7 +580,9 @@ async def reserve_order(
 
     try:
         # 🔥 bulk insert (이미 되어있지만 명확히 유지)
+        t0 = time.time()
         supabase_admin.table("queued_orders").insert(rows).execute()
+        print("⏱ insert 소요:", time.time() - t0)
     except Exception as e:
         raise HTTPException(500, f"예약 저장 실패: {e}")
 
