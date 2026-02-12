@@ -319,7 +319,7 @@ const sideMap = {
 };
 
 async function loadReservedOrders() {
-  const res = await authFetch("/api/order/queued-orders");
+  const res = await authFetch("/reservations");
   if (!res.ok) return;
 
   const data = await res.json();
