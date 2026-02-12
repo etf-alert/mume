@@ -547,7 +547,20 @@ async def reserve_order(
     # =========================
     # 🟢 영업일 계산
     # =========================
-    start_date = datetime.now(ny_tz).date()
+    now_ny = datetime.now(ny_tz)
+
+    # 🔥 오늘 장 시작 + minutes 계산
+    today_execute_time = calculate_execute_at_from_market_open(
+        minutes,
+        base_date=now_ny.date()
+    )
+
+    # 🔥 이미 오늘 시간이 지났으면 다음 거래일부터 시작
+    if now_ny > today_execute_time:
+        start_date = get_next_trading_day(now_ny.date())
+    else:
+        start_date = now_ny.date()
+
     trading_days = get_next_n_trading_days(start_date, repeat_days)
 
     repeat_group = str(uuid4())
