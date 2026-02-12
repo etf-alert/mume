@@ -318,65 +318,93 @@ const sideMap = {
   "SELL": "평단가 +10% 매도"
 };
 
+// 🔥 예약 목록 불러오기 (에러 안전 + 디버그 로그 포함 버전)
 async function loadReservedOrders() {
-  const res = await authFetch("/reservations");
-  if (!res.ok) return;
 
-  const data = await res.json();
-  console.log("📦 queued-orders 응답 데이터:", data);
+  console.log("🔥 loadReservedOrders 시작"); // 🔥 디버그 로그 추가
 
-  const tbody = document.getElementById("reserved-orders-body");
-  const summaryDiv = document.getElementById("reservation-summary");
+  try {  // 🔥 try/catch 추가
 
-  tbody.innerHTML = "";
+    const res = await authFetch("/reservations");
+    console.log("🔥 /reservations 응답 객체:", res); // 🔥 응답 확인용
 
-  const reservations = data.reservations ?? [];
-
-  // 🔥 상단 요약 표시
-  const buyingPower = data.buying_power ?? 0;
-  const totalRequired = data.total_required_amount ?? 0;
-  const totalShortage = data.total_shortage ?? 0;
-
-  summaryDiv.innerHTML = `
-    💰 매수 가능: $${buyingPower.toFixed(2)}<br>
-    📌 전체 필요금액: $${totalRequired.toFixed(2)}<br>
-    ${
-      totalShortage > 0
-        ? `⚠ <span style="color:#ef4444;">총 부족금액: $${totalShortage.toFixed(2)}</span>`
-        : `✅ 부족 없음`
+    if (!res.ok) {
+      console.error("❌ /reservations 응답 실패:", res.status);
+      return;
     }
-  `;
 
-  if (reservations.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="6" class="cell">예약된 주문 없음</td>
-      </tr>
-    `;
-    return;
+    const data = await res.json();
+    console.log("📦 queued-orders 응답 데이터:", data);
+
+    const tbody = document.getElementById("reserved-orders-body");
+    const summaryDiv = document.getElementById("reservation-summary");
+
+    if (!tbody) {
+      console.error("❌ reserved-orders-body 없음");
+      return;
+    }
+
+    tbody.innerHTML = "";
+
+    // 🔥 안전 처리 (구조 깨져도 죽지 않게)
+    const reservations = Array.isArray(data.reservations)
+      ? data.reservations
+      : [];
+
+    const buyingPower = Number(data.buying_power ?? 0);
+    const totalRequired = Number(data.total_required_amount ?? 0);
+    const totalShortage = Number(data.total_shortage ?? 0);
+
+    // 🔥 summaryDiv 존재 확인 후 렌더
+    if (summaryDiv) {
+      summaryDiv.innerHTML = `
+        💰 매수 가능: $${buyingPower.toFixed(2)}<br>
+        📌 전체 필요금액: $${totalRequired.toFixed(2)}<br>
+        ${
+          totalShortage > 0
+            ? `⚠ <span style="color:#ef4444;">총 부족금액: $${totalShortage.toFixed(2)}</span>`
+            : `✅ 부족 없음`
+        }
+      `;
+    }
+
+    if (reservations.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" class="cell">예약된 주문 없음</td>
+        </tr>
+      `;
+      return;
+    }
+
+    reservations.forEach(o => {
+      const tr = document.createElement("tr");
+
+      tr.innerHTML = `
+        <td>${o.ticker ?? "-"}</td>
+        <td>${sideMap[o.side] ?? o.side ?? "-"}</td>
+        <td>${formatKoreanShortDate(o.execute_after)}</td>
+        <td style="font-weight:600;">
+          ${o.repeat_label ?? o.status ?? "-"}
+        </td>
+        <td>
+          ${o.execute_after
+            ? formatKoreanShortDate(o.execute_after)
+            : "완료"}
+        </td>
+        <td>
+          <button onclick="cancelReservation('${o.repeat_group}')">❌</button>
+        </td>
+      `;
+
+      tbody.appendChild(tr);
+    });
+
+  } catch (err) {  // 🔥 에러 잡기
+    console.error("🚨 loadReservedOrders 에러 발생:", err);
   }
-
-  reservations.forEach(o => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${o.ticker}</td>
-      <td>${sideMap[o.side] ?? o.side}</td>
-      <td>${formatKoreanShortDate(o.execute_after)}</td>
-      <td style="font-weight:600;">
-        ${o.repeat_label ?? o.status}
-      </td>
-      <td>
-        ${o.execute_after
-          ? formatKoreanShortDate(o.execute_after)
-          : "완료"}
-      </td>
-      <td>
-        <button onclick="cancelReservation('${o.repeat_group}')">❌</button>
-      </td>
-    `;
-    tbody.appendChild(tr);
-  });
 }
+
 
 async function cancelReservation(repeat_group) {
   // ✅ 1️⃣ 한 번 더 확인
