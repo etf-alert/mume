@@ -799,10 +799,11 @@ def cron_save(secret: str = Query(...)):
     # =====================
     today = now.date().isoformat()
 
-    rows = []
+    res = supabase_admin.table("watchlist").select("ticker").execute()
+    rows = res.data or []
+    tickers = [r["ticker"] for r in rows]
+    tickers_str = " ".join(tickers)
 
-    # 🔥 Yahoo 가격을 한 번에 다운로드 (속도 개선 핵심)
-    tickers_str = " ".join(WATCHLIST)
     data = yf.download(
         tickers_str,
         period="1d",
@@ -1112,10 +1113,6 @@ def avg_price(ticker: str):
 # =====================
 # 프론트
 # =====================
-
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
-
 @app.get("/app", response_class=HTMLResponse)
 def app_page(request: Request):
     user = require_login_page(request)
@@ -1262,12 +1259,13 @@ def send_order_fail_telegram(order: dict, error_msg: str, db):
     send_telegram_message(message)
 
 @app.get("/reservations")
-def get_reservations():
+def get_reservations(user: str = Depends(get_current_user)):
 
     res = (
         supabase_admin
         .table("queued_orders")
         .select("*")
+        .eq("user_id", user)
         .eq("status", "PENDING")
         .order("repeat_index", desc=False)  # 🔥 정렬 추가
         .execute()
@@ -1300,6 +1298,17 @@ def get_reservations():
     buying_power = get_overseas_buying_power()
     print("🔥 현재 buying_power:", buying_power)
 
+    raw_buying_power = get_overseas_buying_power()
+
+    # 🔥 안전하게 float 변환
+    try:
+        if isinstance(raw_buying_power, dict):
+            buying_power = float(raw_buying_power.get("buying_power", 0))
+        else:
+            buying_power = float(raw_buying_power)
+    except:
+        buying_power = 0.0
+        
     total_required_amount = 0.0
 
     enriched_rows = []
