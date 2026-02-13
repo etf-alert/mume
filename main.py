@@ -294,7 +294,8 @@ def cron_execute_reservations(request: Request):
             send_order_fail_telegram(
                 order=o,
                 error_msg=error_msg,
-                db=supabase_admin
+                db=supabase_admin,
+                kis_msg=kis_res.get("msg1") if isinstance(kis_res, dict) else None
             )
 
         # 🔥 주문 간 rate limit 보호
