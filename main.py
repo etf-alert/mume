@@ -149,7 +149,7 @@ def calculate_execute_at_from_market_open(
     if market_open is None:
         raise ValueError("다음 정규장 시작 시간을 찾을 수 없습니다")
 
-    # ✅ NEW: timezone 보정
+    # ✅ timezone 보정
     if market_open.tzinfo is None:
         market_open = market_open.replace(tzinfo=ny_tz)
 
