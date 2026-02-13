@@ -156,7 +156,8 @@ def cron_execute_reservations(secret: str = Query(...)):
                 "avg_price": avg_price,
                 "current_price": current_price,
                 "seed": o["seed"],
-                "ticker": o["ticker"]
+                "ticker": o["ticker"],
+                "qty_owned": pos.get("qty")
             })
 
             side = "buy" if o["side"].startswith("BUY") else "sell"
@@ -464,8 +465,12 @@ def build_order_preview(data: dict):
         if qty <= 0:
             raise ValueError("수량 0")
     elif side == "SELL":
-        # 🔥 계좌 조회 제거 (cron에서 처리)
+        qty_owned = float(data.get("qty_owned") or 0)
+        if qty_owned <= 0:
+            raise ValueError("매도 가능 수량 없음")
+    
         target = round(avg * 1.10, 2)
+    
         if cur > target:
             price = round(cur, 2)
             price_type = "MARKET_BETTER"
@@ -474,6 +479,9 @@ def build_order_preview(data: dict):
             price = target
             price_type = "TARGET"
             message = "평단가+10% 매도"
+    
+        qty = int(qty_owned)
+
     else:
         raise ValueError("invalid side")
     return {
@@ -482,6 +490,7 @@ def build_order_preview(data: dict):
         "price_type": price_type,
         "message": message
     }
+    
 @app.post("/api/order/preview")
 def order_preview(
     data: dict,
