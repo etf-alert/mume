@@ -75,13 +75,36 @@ templates = Jinja2Templates(directory="templates")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 nyse = mcal.get_calendar("NYSE")
 ny_tz = pytz.timezone("US/Eastern")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # ==========================================================
 # 🔥 기존 cron 내부 로직을 함수로 분리
 # (HTTP 엔드포인트 말고 내부 함수로)
 # ==========================================================
+
+def send_telegram_message(text: str):
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    chat_id = os.getenv("TELEGRAM_CHAT_ID")
+
+    if not token or not chat_id:
+        print("⚠️ Telegram env not set")
+        return
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML"
+    }
+
+    try:
+        r = requests.post(url, json=payload, timeout=10)
+        if r.status_code != 200:
+            print("❌ Telegram send failed:", r.text)
+    except Exception as e:
+        print("❌ Telegram exception:", e)
+
+
 @app.post("/cron/execute-reservations")
 def cron_execute_reservations(request: Request):
 
