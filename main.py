@@ -1194,7 +1194,12 @@ def send_order_success_telegram(
     send_telegram_message(message)
 
 
-def send_order_fail_telegram(order: dict, error_msg: str, db):
+def send_order_fail_telegram(
+    order: dict,
+    error_msg: str,
+    db,
+    kis_msg: str | None = None,   # 🔥 추가
+):
     # =========================
     # 🔥 반복 회차 총 개수 조회
     # =========================
@@ -1233,12 +1238,13 @@ def send_order_fail_telegram(order: dict, error_msg: str, db):
         f"회차: {order['repeat_index']}/{total}\n"
         f"실행 시각: {execute_after_str}"
     )
+
     # 🔥 KIS 메시지 추가 (있을 경우만)
     if kis_msg:
         message += f"\nKIS: {kis_msg}"
 
     send_telegram_message(message)
-    
+  
 @app.get("/reservations")
 def get_reservations(user: str = Depends(get_current_user)):
     res = (
