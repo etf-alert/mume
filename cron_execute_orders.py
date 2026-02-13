@@ -36,17 +36,13 @@ def run():
     # =========================
     # 실행 대상 조회
     # =========================
-    res = (
-        supabase
-        .table("queued_orders")
-        .select("*")
-        .eq("status", "PENDING")
-        .lte("execute_after", now_iso)
-        .execute()
-    )
+    claim_res = supabase.rpc(
+        "claim_next_orders",
+        {"batch_size": 20}
+    ).execute()
 
-    orders = res.data or []
-    print(f"▶ ready orders: {len(orders)}")
+    orders = claim_res.data or []
+    print(f"▶ claimed orders: {len(orders)}")
 
     for o in orders:
 
@@ -181,35 +177,36 @@ def run():
             print("✅ done:", o["id"])
 
         except Exception as e:
-
             retry = (o.get("retry_count") or 0) + 1
 
-            update = {
-                "retry_count": retry,
-                "error": str(e)
-            }
-
             if retry >= MAX_RETRY:
-                update["status"] = "ERROR"
-
-                try:
-                    send_order_fail_telegram(
-                        order=o,
-                        error_msg=str(e),
-                        db=supabase
-                    )
-                except Exception as tg_err:
-                    print("⚠ telegram fail error:", tg_err)
+                update = {
+                    "retry_count": retry,
+                    "status": "DONE",   # 🔥 ERROR 대신 DONE 처리
+                    "error": str(e)
+                }
             else:
-                update["status"] = "PENDING"
+                update = {
+                    "retry_count": retry,
+                    "status": "PENDING",
+                    "error": str(e)
+                }
 
             supabase.table("queued_orders") \
                 .update(update) \
                 .eq("id", o["id"]) \
                 .execute()
 
+            # 🔥 같은 그룹 이후 회차 하루 밀기
+            try:
+                supabase.rpc("shift_group_forward", {
+                    "p_repeat_group": o["repeat_group"],
+                    "p_repeat_index": o["repeat_index"]
+                }).execute()
+            except Exception as rpc_err:
+                print("⚠ shift_group_forward error:", rpc_err)
+        
             print("❌ order failed:", o["id"], str(e))
-
-
+        
 if __name__ == "__main__":
     run()
