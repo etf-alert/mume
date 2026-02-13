@@ -107,6 +107,10 @@ def send_telegram_message(text: str):
 
 @app.post("/cron/execute-reservations")
 def cron_execute_reservations(request: Request):
+    # 🔒 미국 장 열렸는지 먼저 체크
+    if not is_us_market_open():
+        print("📴 미국 장 마감/휴장 - cron 실행 안함")
+        return {"status": "market closed"}
 
     # 🔐 Header에서 secret 추출
     secret = request.headers.get("X-CRON-KEY")
@@ -815,6 +819,10 @@ def cleanup_order_cache():
 # =====================
 @app.post("/cron/save")
 def cron_save(request: Request):
+    # 🔒 미국 장 열렸는지 먼저 체크
+    if not is_us_market_open():
+        print("📴 미국 장 마감/휴장 - cron 실행 안함")
+        return {"status": "market closed"}
 
     # =====================
     # 🔐 Header에서 secret 추출
