@@ -11,4 +11,4 @@ jobs:
     steps:
       - name: Call Render cron API
         run: |
-          curl -X POST "${{ secrets.RENDER_CRON_URL }}/cron/execute-orders?secret=${{ secrets.CRON_SECRET }}"
+          curl -X POST "${{ secrets.RENDER_CRON_URL }}/cron/execute-reservations?secret=${{ secrets.CRON_SECRET }}"
