@@ -104,40 +104,51 @@ def cron_execute_reservations(secret: str = Query(...)):
 
     for o in res.data or []:
         try:
-
             # ==================================================
-            # 🔥 FIX: 실행 전 원자적 선점 (중복 실행 방지)
+            # 🔥 FIX 1: 선점은 RUNNING으로 변경 (DONE ❌)
             # ==================================================
             lock = (
                 supabase_admin
                 .table("queued_orders")
-                .update({"status": "DONE"})   # 선점용 임시 DONE
+                .update({"status": "RUNNING"})  # ✅ 변경
                 .eq("id", o["id"])
                 .eq("status", "PENDING")
                 .execute()
             )
 
-            # 🔥 이미 다른 cron이 처리했으면 skip
             if not lock.data:
                 continue
 
             # ==================================================
-            # 🔥 실시간 계좌 조회
+            # 🔥 같은 그룹에서 더 낮은 index가 RUNNING이면 skip
+            # (그룹 순서 보장)
             # ==================================================
-            pos = get_overseas_avg_price(o["ticker"])
+            lower_running = (
+                supabase_admin
+                .table("queued_orders")
+                .select("id")
+                .eq("repeat_group", o["repeat_group"])
+                .lt("repeat_index", o["repeat_index"])
+                .in_("status", ["PENDING", "RUNNING"])
+                .execute()
+            )
 
+            if lower_running.data:
+                # 선점 복구
+                supabase_admin.table("queued_orders").update({
+                    "status": "PENDING"
+                }).eq("id", o["id"]).execute()
+                continue
+
+            # ================= 실제 주문 로직 그대로 =================
+
+            pos = get_overseas_avg_price(o["ticker"])
             if not pos.get("found"):
                 raise RuntimeError("보유 종목 없음")
 
             avg_price = float(pos.get("avg_price", 0))
             sellable_qty = float(pos.get("sellable_qty", 0))
 
-            if avg_price <= 0:
-                raise RuntimeError("평균단가 없음")
-
-            # ==================================================
-            # 🔥 현재가 조회 + preview 계산
-            # ==================================================
             current_price = resolve_prices(o["ticker"])["base_price"]
 
             preview = build_order_preview({
@@ -150,9 +161,6 @@ def cron_execute_reservations(secret: str = Query(...)):
 
             side = "buy" if o["side"].startswith("BUY") else "sell"
 
-            # ==================================================
-            # 🔥 SELL은 실시간 전량 매도
-            # ==================================================
             if side == "sell":
                 if sellable_qty <= 0:
                     raise RuntimeError("매도 가능 수량 없음")
@@ -163,9 +171,6 @@ def cron_execute_reservations(secret: str = Query(...)):
             if order_qty <= 0:
                 raise RuntimeError("주문 수량 0")
 
-            # ==================================================
-            # 🔥 실제 주문 실행
-            # ==================================================
             kis_res = order_overseas_stock(
                 ticker=o["ticker"],
                 price=preview["price"],
@@ -179,29 +184,17 @@ def cron_execute_reservations(secret: str = Query(...)):
                 )
 
             # ==================================================
-            # ✅ 성공 시 처리
-            # 🔥 FIX: 이미 DONE으로 선점했으므로 status 재설정 안함
+            # ✅ 성공 시 DONE 처리 (여기서 DONE)
             # ==================================================
             supabase_admin.table("queued_orders").update({
+                "status": "DONE",  # ✅ 여기서만 DONE
                 "executed_at": now.isoformat(),
                 "error": None
             }).eq("id", o["id"]).execute()
 
-            send_order_success_telegram(
-                order=o,
-                executed_price=preview["price"],
-                executed_qty=order_qty,
-                executed_at=now,
-                kis_msg=kis_res.get("msg1"),
-                db=supabase_admin
-            )
-
         except Exception as e:
-
             # ==================================================
-            # 🔥 실패 시
-            # - 다음 영업일로 execute_after 이동
-            # - status 다시 PENDING으로 복구
+            # 🔥 실패 시 하루 밀림 + 그룹 이후 회차도 밀기
             # ==================================================
             next_date = datetime.now(ny_tz).date() + timedelta(days=1)
 
@@ -219,26 +212,26 @@ def cron_execute_reservations(secret: str = Query(...)):
                 base_date=next_date
             )
 
+            # 현재 row 밀기
             supabase_admin.table("queued_orders").update({
                 "execute_after": next_execute.astimezone(
                     timezone.utc
                 ).isoformat(),
                 "error": str(e),
-                "status": "PENDING"   # 🔥 FIX: 선점 복구
+                "status": "PENDING"
             }).eq("id", o["id"]).execute()
 
-            send_order_fail_telegram(
-                order=o,
-                error_msg=str(e),
-                db=supabase_admin
-            )
+            # ==================================================
+            # 🔥 FIX 2: 같은 그룹 이후 회차도 하루씩 밀기
+            # ==================================================
+            supabase_admin.rpc("shift_group_forward", {
+                "p_repeat_group": o["repeat_group"],
+                "p_repeat_index": o["repeat_index"]
+            })
 
-    # ==========================================================
-    # 🔥 DONE 최근 3000개만 유지 (DB RPC)
-    # ==========================================================
     supabase_admin.rpc("cleanup_queued_orders").execute()
-
     return {"status": "ok"}
+
 
 # =====================
 # Auth utils
@@ -858,6 +851,7 @@ def delete_reservation_group(
         return {"status": "deleted", "repeat_group": repeat_group}
     except Exception as e:
         raise HTTPException(500, f"삭제 실패: {e}")
+        
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
