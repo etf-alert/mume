@@ -903,19 +903,22 @@ def cron_execute_reservations(secret: str = Query(...)):
             )
 
         except Exception as e:
+            # ==========================================
+            # 🔥 실패 시: 회차 유지 + 다음 영업일 재시도
+            # ==========================================
 
-            # ==========================================
-            # 🔥 실패 시: 회차 유지 + 다음날 재시도
-            # ==========================================
+            next_date = datetime.now(ny_tz).date() + timedelta(days=1)
 
             next_execute = calculate_execute_at_from_market_open(
-                execute_after_minutes=o["execute_after_minutes"]
+                execute_after_minutes=o["execute_after_minutes"],
+                base_date=next_date  # 🔥 핵심
             )
 
             supabase_admin.table("queued_orders").update({
-                "execute_after": next_execute.isoformat(),
+                # 🔥 반드시 UTC로 저장
+                "execute_after": next_execute.astimezone(timezone.utc).isoformat(),
                 "error": str(e),
-                "status": "PENDING"   # 🔥 ERROR로 두지 않음
+                "status": "PENDING"  # ERROR로 두지 않음
             }).eq("id", o["id"]).execute()
 
             send_order_fail_telegram(
