@@ -100,13 +100,10 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 def execute_reservations_job():
     print("🔄 Cron 실행:", datetime.now(timezone.utc))
-
     try:
-        # 👉 여기 기존 cron 로직 함수 호출
-        cron_execute_reservations_internal()
+        execute_reservations_core()   # ✅ secret 필요 없음
     except Exception as e:
         print("❌ Cron 에러:", e)
-
 
 # ==========================================================
 # 🔥 APScheduler 시작
@@ -838,18 +835,20 @@ def cron_save(secret: str = Query(...)):
 # Cron 실행 (장 시작 시)
 # =====================
 @app.post("/cron/execute-reservations")
-def cron_execute_reservations_internal(secret: str = Query(...)):
+def cron_execute_reservations(secret: str = Query(...)):
     if secret != os.getenv("CRON_SECRET"):
         raise HTTPException(403)
 
+    execute_reservations_core()
+
+    return {"status": "ok"}
+
+# ==========================================================
+# 🔥 실제 실행 로직 (secret 없음)
+# ==========================================================
+def execute_reservations_core():
     now = datetime.now(timezone.utc)
 
-    # ==========================================================
-    # 🔥 실행 대상 조회
-    # - PENDING
-    # - execute_after <= now
-    # - repeat_index 낮은 순서대로
-    # ==========================================================
     res = (
         supabase_admin
         .table("queued_orders")
@@ -862,9 +861,6 @@ def cron_execute_reservations_internal(secret: str = Query(...)):
 
     for o in res.data or []:
         try:
-            # ==================================================
-            # 🔥 실시간 계좌 조회
-            # ==================================================
             pos = get_overseas_avg_price(o["ticker"])
             if not pos.get("found"):
                 raise RuntimeError("보유 종목 없음")
@@ -873,11 +869,8 @@ def cron_execute_reservations_internal(secret: str = Query(...)):
             sellable_qty = float(pos.get("sellable_qty", 0))
 
             if avg_price <= 0:
-                raise RuntimeError("평균단가 없음")
+                raise RuntimeError("평단가 없음")
 
-            # ==================================================
-            # 🔥 현재가 조회 + preview 계산
-            # ==================================================
             current_price = resolve_prices(o["ticker"])["base_price"]
 
             preview = build_order_preview({
@@ -890,9 +883,6 @@ def cron_execute_reservations_internal(secret: str = Query(...)):
 
             side = "buy" if o["side"].startswith("BUY") else "sell"
 
-            # ==================================================
-            # 🔥 SELL은 실시간 전량 매도
-            # ==================================================
             if side == "sell":
                 if sellable_qty <= 0:
                     raise RuntimeError("매도 가능 수량 없음")
@@ -903,9 +893,6 @@ def cron_execute_reservations_internal(secret: str = Query(...)):
             if order_qty <= 0:
                 raise RuntimeError("주문 수량 0")
 
-            # ==================================================
-            # 🔥 실제 주문 실행
-            # ==================================================
             kis_res = order_overseas_stock(
                 ticker=o["ticker"],
                 price=preview["price"],
@@ -918,9 +905,6 @@ def cron_execute_reservations_internal(secret: str = Query(...)):
                     f"[KIS] {kis_res.get('msg_cd')} - {kis_res.get('msg1')}"
                 )
 
-            # ==================================================
-            # ✅ 성공 시: DONE 처리
-            # ==================================================
             supabase_admin.table("queued_orders").update({
                 "status": "DONE",
                 "executed_at": now.isoformat(),
@@ -937,12 +921,6 @@ def cron_execute_reservations_internal(secret: str = Query(...)):
             )
 
         except Exception as e:
-            # ==================================================
-            # 🔥 실패 시
-            # - 회차 유지
-            # - 다음 영업일로 execute_after 이동
-            # - status는 PENDING 유지
-            # ==================================================
             next_date = datetime.now(ny_tz).date() + timedelta(days=1)
 
             next_execute = calculate_execute_at_from_market_open(
@@ -962,13 +940,8 @@ def cron_execute_reservations_internal(secret: str = Query(...)):
                 db=supabase_admin
             )
 
-    # ==========================================================
-    # 🔥 DONE 최근 3000개만 유지, ERROR 최근 500개만 유지 (DB 단일 쿼리, race safe)
-    # ==========================================================
+    # 🔥 cleanup RPC
     supabase_admin.rpc("cleanup_queued_orders").execute()
-
-    return {"status": "ok"}
-
 
 # =====================
 # 🔥 예약 주문 삭제 API
