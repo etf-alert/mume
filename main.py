@@ -4,6 +4,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.security import OAuth2PasswordBearer
+from apscheduler.schedulers.background import BackgroundScheduler
 from jose import jwt, JWTError
 import requests
 import time
@@ -91,6 +92,38 @@ ny_tz = pytz.timezone("US/Eastern")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+# ==========================================================
+# 🔥 기존 cron 내부 로직을 함수로 분리
+# (HTTP 엔드포인트 말고 내부 함수로)
+# ==========================================================
+
+def execute_reservations_job():
+    print("🔄 Cron 실행:", datetime.now(timezone.utc))
+
+    try:
+        # 👉 여기 기존 cron 로직 함수 호출
+        cron_execute_reservations_internal()
+    except Exception as e:
+        print("❌ Cron 에러:", e)
+
+
+# ==========================================================
+# 🔥 APScheduler 시작
+# ==========================================================
+
+scheduler = BackgroundScheduler()
+
+@app.on_event("startup")
+def start_scheduler():
+    scheduler.add_job(
+        execute_reservations_job,
+        "interval",
+        minutes=2,
+        max_instances=1  # 🔥 동시 실행 방지
+    )
+    scheduler.start()
+    print("✅ APScheduler 시작됨 (2분 간격)")
 
 def send_telegram_message(text: str):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -805,7 +838,7 @@ def cron_save(secret: str = Query(...)):
 # Cron 실행 (장 시작 시)
 # =====================
 @app.post("/cron/execute-reservations")
-def cron_execute_reservations(secret: str = Query(...)):
+def cron_execute_reservations_internal(secret: str = Query(...)):
     if secret != os.getenv("CRON_SECRET"):
         raise HTTPException(403)
 
