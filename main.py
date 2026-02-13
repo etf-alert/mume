@@ -83,10 +83,15 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 # (HTTP 엔드포인트 말고 내부 함수로)
 # ==========================================================
 @app.post("/cron/execute-reservations")
-def cron_execute_reservations(secret: str = Query(...)):
-    if secret != os.getenv("CRON_SECRET"):
-        raise HTTPException(403)
+def cron_execute_reservations(request: Request):
 
+    # 🔐 Header에서 secret 추출
+    secret = request.headers.get("X-CRON-KEY")
+
+    # 🔐 secret 검증
+    if secret != os.getenv("CRON_SECRET"):
+        raise HTTPException(status_code=403, detail="Forbidden")
+        
     now = datetime.now(timezone.utc)
 
     # ==========================================================
@@ -785,14 +790,19 @@ def cleanup_order_cache():
 # =====================
 # Cron 저장
 # =====================
-@app.api_route("/cron/save", methods=["GET", "POST"])
-def cron_save(secret: str = Query(...)):
+@app.post("/cron/save")
+def cron_save(request: Request):
+
+    # =====================
+    # 🔐 Header에서 secret 추출
+    # =====================
+    secret = request.headers.get("X-CRON-KEY")
+
     # =====================
     # 🔐 시크릿 체크
     # =====================
     if secret != os.getenv("CRON_SECRET"):
         raise HTTPException(status_code=403, detail="Forbidden")
-
     now = datetime.now(ny_tz)
 
     schedule = nyse.schedule(
