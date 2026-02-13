@@ -819,10 +819,16 @@ def cleanup_order_cache():
 # =====================
 @app.post("/cron/save")
 def cron_save(request: Request):
-    # 🔒 미국 장 열렸는지 먼저 체크
-    if not is_us_market_open():
-        print("📴 미국 장 마감/휴장 - cron 실행 안함")
-        return {"status": "market closed"}
+    schedule = nyse.schedule(...)
+    if schedule.empty:
+        return {"status": "holiday"}
+    
+    close_time = schedule.iloc[0]["market_close"]
+    
+    if not (close_time + timedelta(minutes=3)
+            <= now
+            <= close_time + timedelta(minutes=10)):
+        return {"status": "not close window"}
 
     # =====================
     # 🔐 Header에서 secret 추출
