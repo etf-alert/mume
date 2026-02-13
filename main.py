@@ -91,9 +91,6 @@ def cron_execute_reservations(secret: str = Query(...)):
 
     # ==========================================================
     # 🔥 실행 대상 조회
-    # - PENDING
-    # - execute_after <= now
-    # - repeat_index 낮은 순서대로
     # ==========================================================
     res = (
         supabase_admin
@@ -107,10 +104,28 @@ def cron_execute_reservations(secret: str = Query(...)):
 
     for o in res.data or []:
         try:
+
+            # ==================================================
+            # 🔥 FIX: 실행 전 원자적 선점 (중복 실행 방지)
+            # ==================================================
+            lock = (
+                supabase_admin
+                .table("queued_orders")
+                .update({"status": "DONE"})   # 선점용 임시 DONE
+                .eq("id", o["id"])
+                .eq("status", "PENDING")
+                .execute()
+            )
+
+            # 🔥 이미 다른 cron이 처리했으면 skip
+            if not lock.data:
+                continue
+
             # ==================================================
             # 🔥 실시간 계좌 조회
             # ==================================================
             pos = get_overseas_avg_price(o["ticker"])
+
             if not pos.get("found"):
                 raise RuntimeError("보유 종목 없음")
 
@@ -164,10 +179,10 @@ def cron_execute_reservations(secret: str = Query(...)):
                 )
 
             # ==================================================
-            # ✅ 성공 시: DONE 처리
+            # ✅ 성공 시 처리
+            # 🔥 FIX: 이미 DONE으로 선점했으므로 status 재설정 안함
             # ==================================================
             supabase_admin.table("queued_orders").update({
-                "status": "DONE",
                 "executed_at": now.isoformat(),
                 "error": None
             }).eq("id", o["id"]).execute()
@@ -182,23 +197,34 @@ def cron_execute_reservations(secret: str = Query(...)):
             )
 
         except Exception as e:
+
             # ==================================================
             # 🔥 실패 시
-            # - 회차 유지
             # - 다음 영업일로 execute_after 이동
-            # - status는 PENDING 유지
+            # - status 다시 PENDING으로 복구
             # ==================================================
             next_date = datetime.now(ny_tz).date() + timedelta(days=1)
 
+            original_dt = datetime.fromisoformat(
+                o["execute_after"]
+            ).astimezone(ny_tz)
+
+            minutes_from_open = int(
+                (original_dt - next_market_open(original_dt.date()))
+                .total_seconds() / 60
+            )
+
             next_execute = calculate_execute_at_from_market_open(
-                execute_after_minutes=o["execute_after_minutes"],
+                execute_after_minutes=minutes_from_open,
                 base_date=next_date
             )
 
             supabase_admin.table("queued_orders").update({
-                "execute_after": next_execute.astimezone(timezone.utc).isoformat(),
+                "execute_after": next_execute.astimezone(
+                    timezone.utc
+                ).isoformat(),
                 "error": str(e),
-                "status": "PENDING"
+                "status": "PENDING"   # 🔥 FIX: 선점 복구
             }).eq("id", o["id"]).execute()
 
             send_order_fail_telegram(
@@ -208,7 +234,7 @@ def cron_execute_reservations(secret: str = Query(...)):
             )
 
     # ==========================================================
-    # 🔥 DONE 최근 3000개만 유지, ERROR 최근 500개만 유지 (DB 단일 쿼리, race safe)
+    # 🔥 DONE 최근 3000개만 유지 (DB RPC)
     # ==========================================================
     supabase_admin.rpc("cleanup_queued_orders").execute()
 
@@ -244,6 +270,7 @@ def get_next_n_trading_days(start_date, n):
         end_date=start_date + timedelta(days=n * 2)
     )
     return list(schedule.index[:n])
+    
 def calculate_execute_at_from_market_open(
     execute_after_minutes: int,
     base_date: date | None = None
@@ -291,15 +318,16 @@ def login(data: dict):
 def get_repeat_total(db, repeat_group: str) -> int:
     if not repeat_group:
         return 1
+        
     res = (
         db
         .table("queued_orders")
         .select("id", count="exact")
         .eq("repeat_group", repeat_group)
-        .neq("status", "ERROR")   # 🔧 FIX
         .execute()
     )
     return res.count or 1
+    
 def get_yahoo_quote(ticker: str) -> dict:
     """
     Returns:
@@ -505,6 +533,7 @@ def execute_order(order_id: str, user: str = Depends(get_current_user)):
     ORDER_CACHE.pop(order_id, None)
     return {"status": "ok", "result": result}
 @app.post("/api/order/reserve")
+
 async def reserve_order(
     request: Request,
     user: str = Depends(get_current_user)
