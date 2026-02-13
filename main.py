@@ -106,19 +106,24 @@ def send_telegram_message(text: str):
 
 @app.post("/cron/execute-reservations")
 def cron_execute_reservations(request: Request):
-    # 🔒 미국 장 열렸는지 먼저 체크
+
+    # ==========================================================
+    # 🔒 1️⃣ 미국 장 열렸는지 체크
+    # ==========================================================
     if not is_us_market_open():
         print("📴 미국 장 마감/휴장 - cron 실행 안함")
         return {"status": "market closed"}
 
-    # 🔐 secret 검증
+    # ==========================================================
+    # 🔐 2️⃣ CRON SECRET 검증
+    # ==========================================================
     if request.headers.get("X-CRON-KEY") != os.getenv("CRON_SECRET"):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     now = datetime.now(timezone.utc)
 
     # ==========================================================
-    # 🔥 실행 대상 조회
+    # 🔥 3️⃣ 실행 대상 조회
     # ==========================================================
     res = (
         supabase_admin
@@ -130,9 +135,17 @@ def cron_execute_reservations(request: Request):
         .execute()
     )
 
+    # ==========================================================
+    # 🔥 4️⃣ 주문 처리 루프
+    # ==========================================================
     for o in res.data or []:
+
+        kis_res = None   # 🔥 반드시 초기화 (UnboundLocalError 방지)
+
         try:
+            # --------------------------------------------------
             # 🔥 선점 (RUNNING)
+            # --------------------------------------------------
             lock = (
                 supabase_admin
                 .table("queued_orders")
@@ -144,7 +157,9 @@ def cron_execute_reservations(request: Request):
             if not lock.data:
                 continue
 
+            # --------------------------------------------------
             # 🔥 그룹 순서 보장
+            # --------------------------------------------------
             lower_running = (
                 supabase_admin
                 .table("queued_orders")
@@ -160,7 +175,9 @@ def cron_execute_reservations(request: Request):
                 }).eq("id", o["id"]).execute()
                 continue
 
-            # ================= 실제 주문 =================
+            # ==================================================
+            # 🟢 실제 주문 로직
+            # ==================================================
             pos = get_overseas_avg_price(o["ticker"])
             if not pos.get("found"):
                 raise RuntimeError("보유 종목 없음")
@@ -190,6 +207,9 @@ def cron_execute_reservations(request: Request):
             if order_qty <= 0:
                 raise RuntimeError("주문 수량 0")
 
+            # --------------------------------------------------
+            # 🔥 KIS 주문 실행
+            # --------------------------------------------------
             kis_res = order_overseas_stock(
                 ticker=o["ticker"],
                 price=preview["price"],
@@ -202,13 +222,18 @@ def cron_execute_reservations(request: Request):
                     f"[KIS] {kis_res.get('msg_cd')} - {kis_res.get('msg1')}"
                 )
 
-            # ✅ 성공 시 DONE
+            # ==================================================
+            # ✅ 주문 성공 처리
+            # ==================================================
             supabase_admin.table("queued_orders").update({
                 "status": "DONE",
                 "executed_at": now.isoformat(),
                 "error": None
             }).eq("id", o["id"]).execute()
 
+            # --------------------------------------------------
+            # 🔥 성공 텔레그램 (별도 보호)
+            # --------------------------------------------------
             try:
                 send_order_success_telegram(
                     order=o,
@@ -218,18 +243,19 @@ def cron_execute_reservations(request: Request):
                     kis_msg=kis_res.get("msg1") if isinstance(kis_res, dict) else None,
                     db=supabase_admin
                 )
+            except Exception as tg_err:
+                print("⚠ 성공 텔레그램 전송 실패:", tg_err)
 
         except Exception as e:
+
             error_msg = str(e)
             current_retry = o.get("retry_count", 0)
             now_utc = datetime.now(timezone.utc)
 
-            # =====================================================
-            # 🔥 0️⃣ Rate Limit 전용 처리
-            # =====================================================
+            # ==================================================
+            # 🔥 0️⃣ Rate Limit → 15분 뒤 재시도
+            # ==================================================
             if "Too Many Requests" in error_msg or "rate" in error_msg.lower():
-                print("⏳ Rate limit → 15분 뒤 재시도")
-
                 retry_time = now_utc + timedelta(minutes=15)
 
                 supabase_admin.table("queued_orders").update({
@@ -241,12 +267,10 @@ def cron_execute_reservations(request: Request):
 
                 continue
 
-            # =====================================================
+            # ==================================================
             # 🔥 1️⃣ 일시 오류 → 30초 재시도 (최대 3회)
-            # =====================================================
+            # ==================================================
             if current_retry < 3:
-                print("🔁 일시 오류 → 30초 뒤 재시도")
-
                 retry_time = now_utc + timedelta(seconds=30)
 
                 supabase_admin.table("queued_orders").update({
@@ -258,9 +282,9 @@ def cron_execute_reservations(request: Request):
 
                 continue
 
-            # =====================================================
-            # 🔥 2️⃣ 3회 초과 → 다음 거래일로 밀기
-            # =====================================================
+            # ==================================================
+            # 🔥 2️⃣ 3회 초과 → 다음 거래일로 이월
+            # ==================================================
             next_date = datetime.now(ny_tz).date() + timedelta(days=1)
 
             original_dt = datetime.fromisoformat(
@@ -278,9 +302,7 @@ def cron_execute_reservations(request: Request):
             )
 
             supabase_admin.table("queued_orders").update({
-                "execute_after": next_execute.astimezone(
-                    timezone.utc
-                ).isoformat(),
+                "execute_after": next_execute.astimezone(timezone.utc).isoformat(),
                 "error": error_msg,
                 "status": "PENDING",
                 "retry_count": current_retry + 1
@@ -291,19 +313,31 @@ def cron_execute_reservations(request: Request):
                 "p_repeat_index": o["repeat_index"]
             }).execute()
 
-            send_order_fail_telegram(
-                order=o,
-                error_msg=error_msg,
-                db=supabase_admin,
-                kis_msg=kis_res.get("msg1") if isinstance(kis_res, dict) else None
-            )
+            # --------------------------------------------------
+            # 🔥 실패 텔레그램 (보호)
+            # --------------------------------------------------
+            try:
+                send_order_fail_telegram(
+                    order=o,
+                    error_msg=error_msg,
+                    db=supabase_admin,
+                    kis_msg=kis_res.get("msg1") if isinstance(kis_res, dict) else None
+                )
+            except Exception as tg_err:
+                print("⚠ 실패 텔레그램 전송 실패:", tg_err)
 
+        # ------------------------------------------------------
         # 🔥 주문 간 rate limit 보호
+        # ------------------------------------------------------
         time.sleep(1.2)
 
+    # ==========================================================
+    # 🧹 정리
+    # ==========================================================
     supabase_admin.rpc("cleanup_queued_orders").execute()
 
     return {"status": "ok"}
+
 
 # =====================
 # Auth utils
@@ -1185,7 +1219,7 @@ def send_order_success_telegram(
         f"수량: {executed_qty} 주\n"
         f"{amount_label}: ${total_amount:,.2f}\n\n"
         f"회차: {order['repeat_index']}/{total}\n"
-        f"실행 시각: {executed_at_str}"
+        f"설정 시각: {executed_at_str}"
     )
 
     # 🔥 KIS 메시지 추가 (있을 경우만)
@@ -1237,7 +1271,7 @@ def send_order_fail_telegram(
         f"구분: {side_label}\n"
         f"사유: {error_msg}\n\n"
         f"회차: {order['repeat_index']}/{total}\n"
-        f"실행 시각: {execute_after_str}"
+        f"설정 시각: {execute_after_str}"
     )
 
     # 🔥 KIS 메시지 추가 (있을 경우만)
