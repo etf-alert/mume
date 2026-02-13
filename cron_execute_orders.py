@@ -45,22 +45,6 @@ def run():
     print(f"▶ claimed orders: {len(orders)}")
 
     for o in orders:
-
-        # =========================
-        # 실행 락
-        # =========================
-        lock = (
-            supabase
-            .table("queued_orders")
-            .update({"status": "RUNNING"})
-            .eq("id", o["id"])
-            .eq("status", "PENDING")
-            .execute()
-        )
-
-        if not lock.data:
-            continue
-
         try:
             ticker = o["ticker"]
 
