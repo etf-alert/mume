@@ -61,6 +61,48 @@ def get_access_token():
     _token_cache["access_token"] = j["access_token"]
     _token_cache["expire_at"] = now + j["expires_in"] - 60
     return j["access_token"]
+
+# =====================
+# 🔥 공통 KIS 요청 함수 (자동 토큰 재발급 + 1회 재시도)
+# =====================
+def _kis_request(method, url, headers=None, params=None, json=None):
+    token = get_access_token()
+
+    if headers is None:
+        headers = {}
+
+    headers = {
+        **headers,
+        "authorization": f"Bearer {token}"
+    }
+
+    res = requests.request(
+        method=method,
+        url=url,
+        headers=headers,
+        params=params,
+        json=json
+    )
+
+    # 🔥 401이면 토큰 만료 → 강제 재발급 후 1회 재시도
+    if res.status_code == 401:
+        print("🔥 KIS 토큰 만료 → 재발급 후 재시도")
+
+        _token_cache["access_token"] = None
+        token = get_access_token()
+
+        headers["authorization"] = f"Bearer {token}"
+
+        res = requests.request(
+            method=method,
+            url=url,
+            headers=headers,
+            params=params,
+            json=json
+        )
+
+    res.raise_for_status()
+    return res
     
 # =====================
 # 해외주식 평단가 조회
@@ -87,7 +129,13 @@ def get_overseas_avg_price(ticker: str):
         "CTX_AREA_NK200": ""
     }
 
-    res = requests.get(url, headers=headers, params=params)
+    res = _kis_request(
+        method="GET",
+        url=url,
+        headers=headers,
+        params=params
+    )
+
     res.raise_for_status()
     data = res.json()
 
@@ -148,7 +196,12 @@ def get_overseas_buying_power(ticker="AAPL", price="1"):
         "ITEM_CD": "AAPL"        # 🔥 아무 해외종목 하나
     }
 
-    res = requests.get(url, headers=headers, params=params)
+    res = _kis_request(
+        method="GET",
+        url=url,
+        headers=headers,
+        params=params
+    )
     res.raise_for_status()
     data = res.json()
 
@@ -210,7 +263,12 @@ def order_overseas_stock(
 
     url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/order"
 
-    res = requests.post(url, headers=headers, json=body)
+    res = _kis_request(
+        method="POST",
+        url=url,
+        headers=headers,
+        json=body
+    )
 
     print("===== KIS ORDER DEBUG =====")
     print("STATUS:", res.status_code)
