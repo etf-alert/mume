@@ -1257,6 +1257,35 @@ def get_reservations(user: str = Depends(get_current_user)):
         "reservations": enriched_rows
     }
 
+async def main():
+    await asyncio.gather(
+        order_scheduler(),   # 주문 실행 루프
+        rsi_scheduler(),     # RSI 루프
+    )
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+async def rsi_scheduler():
+    while True:
+        now_utc = datetime.now(timezone.utc)
+        now_ny = now_utc.astimezone(ny_tz)
+
+        # 🔥 평일 체크 (월~금)
+        if now_ny.weekday() < 5:
+
+            # 🔥 20~23시 (UTC 기준이 아니라 NY 기준이면 조정)
+            if 20 <= now_ny.hour <= 23:
+
+                # 🔥 10분마다 실행
+                if now_ny.minute % 10 == 0:
+                    try:
+                        await save_rsi_history()  # 네 기존 함수
+                        print("RSI saved")
+                    except Exception as e:
+                        print("RSI error:", e)
+
+        await asyncio.sleep(60)  # 1분마다 체크
 
 @app.get("/chart-page", response_class=HTMLResponse)
 def chart_page(request: Request):
