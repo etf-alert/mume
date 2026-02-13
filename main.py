@@ -812,26 +812,25 @@ def cron_execute_reservations(secret: str = Query(...)):
 
     for o in res.data or []:
         try:
-            if not is_us_market_open():
-                continue
 
-            # 🔥 ADDED: 실행 시점 실시간 계좌 조회
+            # ❌ 삭제: 현재 시점 장 체크 제거 (밀림 방지)
+            # if not is_us_market_open():
+            #     continue
+
             pos = get_overseas_avg_price(o["ticker"])
             if not pos.get("found"):
                 raise RuntimeError("보유 종목 없음")
 
-            # 🔥 MODIFIED: 딕셔너리 구조에 맞게 값 추출
-            avg_price = float(pos.get("avg_price", 0))   # 실시간 평균단가
-            qty = float(pos.get("qty", 0))               # 실시간 보유수량
-            sellable_qty = float(pos.get("sellable_qty", 0))  # 🔥 추가 (매도 가능 수량)
+            avg_price = float(pos.get("avg_price", 0))
+            qty = float(pos.get("qty", 0))
+            sellable_qty = float(pos.get("sellable_qty", 0))
 
-            if o["side"] == "SELL" and sellable_qty <= 0:   # 🔥 MODIFIED
+            if o["side"] == "SELL" and sellable_qty <= 0:
                 raise RuntimeError("매도 가능 수량 없음")
 
             if avg_price <= 0:
                 raise RuntimeError("평균단가 없음")
 
-            # 🔧 현재가 계산 (실시간)
             current_price = resolve_prices(o["ticker"])["base_price"]
 
             preview = build_order_preview({
@@ -841,11 +840,11 @@ def cron_execute_reservations(secret: str = Query(...)):
                 "seed": o["seed"],
                 "ticker": o["ticker"]
             })
-    
+
             side = "buy" if o["side"].startswith("BUY") else "sell"
 
             if side == "sell":
-                order_qty = int(sellable_qty)  
+                order_qty = int(sellable_qty)
             else:
                 order_qty = preview["qty"]
 
@@ -855,23 +854,45 @@ def cron_execute_reservations(secret: str = Query(...)):
             kis_res = order_overseas_stock(
                 ticker=o["ticker"],
                 price=preview["price"],
-                qty=order_qty,   
+                qty=order_qty,
                 side=side
             )
 
-            # 🔥 KIS 실패 강제 예외 처리
             if not kis_res or kis_res.get("rt_cd") != "0":
                 raise RuntimeError(
                     f"[KIS] {kis_res.get('msg_cd')} - {kis_res.get('msg1')}"
                 )
 
-            # 주문 완료 처리
-            supabase_admin.table("queued_orders").update({
-                "status": "DONE",
-                "executed_at": now.isoformat()
-            }).eq("id", o["id"]).execute()
+            # ==========================================
+            # 🔥 성공 시: repeat_current +1
+            # ==========================================
 
-            # 🔥 KIS 응답 메시지 텔레그램 전달
+            repeat_total = o.get("repeat_total", 1)
+            repeat_current = o.get("repeat_current", 1)
+
+            new_current = repeat_current + 1
+
+            if new_current > repeat_total:
+                # 🔥 모든 반복 완료
+                supabase_admin.table("queued_orders").update({
+                    "status": "DONE",
+                    "executed_at": now.isoformat(),
+                    "repeat_current": repeat_total
+                }).eq("id", o["id"]).execute()
+
+            else:
+                # 🔥 다음 영업일로 재예약
+                next_execute = calculate_execute_at_from_market_open(
+                    execute_after_minutes=o["execute_after_minutes"]
+                )
+
+                supabase_admin.table("queued_orders").update({
+                    "repeat_current": new_current,
+                    "execute_after": next_execute.isoformat(),
+                    "executed_at": now.isoformat(),
+                    "status": "PENDING"
+                }).eq("id", o["id"]).execute()
+
             send_order_success_telegram(
                 order=o,
                 executed_price=preview["price"],
@@ -882,9 +903,19 @@ def cron_execute_reservations(secret: str = Query(...)):
             )
 
         except Exception as e:
+
+            # ==========================================
+            # 🔥 실패 시: 회차 유지 + 다음날 재시도
+            # ==========================================
+
+            next_execute = calculate_execute_at_from_market_open(
+                execute_after_minutes=o["execute_after_minutes"]
+            )
+
             supabase_admin.table("queued_orders").update({
-                "status": "ERROR",
-                "error": str(e)
+                "execute_after": next_execute.isoformat(),
+                "error": str(e),
+                "status": "PENDING"   # 🔥 ERROR로 두지 않음
             }).eq("id", o["id"]).execute()
 
             send_order_fail_telegram(
@@ -892,6 +923,8 @@ def cron_execute_reservations(secret: str = Query(...)):
                 error_msg=str(e),
                 db=supabase_admin
             )
+
+    return {"status": "ok"}
 
     # ===============================
     # DONE 최근 3000개만 유지
