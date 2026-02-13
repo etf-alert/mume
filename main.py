@@ -420,24 +420,34 @@ def execute_order(order_id: str, user: str = Depends(get_current_user)):
             "정규장에만 즉시 주문 가능합니다. 예약 주문을 사용하세요."
         )
 
-    # 🔁 매도 수량 재검증
+    # 🔥 SELL은 실시간 수량 재조회 (cron과 동일 구조)
     if order["side"] == "SELL":
         pos = get_overseas_avg_price(order["ticker"])
-        if order["qty"] > pos["qty"]:
-            raise HTTPException(400, "보유 수량 부족")
+        sellable_qty = float(pos.get("sellable_qty", 0))
+
+        if sellable_qty <= 0:
+            raise HTTPException(400, "매도 가능 수량 없음")
+
+        order_qty = int(sellable_qty)   # 🔥 전량 매도
+    else:
+        order_qty = order["qty"]        # BUY는 preview 수량 사용
+
+        if order_qty <= 0:
+            raise HTTPException(400, "주문 수량 0")
 
     side = "buy" if order["side"].startswith("BUY") else "sell"
 
     result = order_overseas_stock(
         ticker=order["ticker"],
         price=order["price"],
-        qty=order["qty"],
+        qty=order_qty,   # 🔥 수정된 수량 사용
         side=side
     )
 
     ORDER_CACHE.pop(order_id, None)
+
     return {"status": "ok", "result": result}
-    
+
 @app.post("/api/order/reserve")
 async def reserve_order(
     request: Request,
