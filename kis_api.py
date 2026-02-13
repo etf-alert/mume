@@ -108,12 +108,11 @@ def _kis_request(method, url, headers=None, params=None, json=None):
 # 해외주식 평단가 조회
 # =====================
 def get_overseas_avg_price(ticker: str):
-    token = get_access_token()
     excg_cd = get_kis_exchange_code(ticker)
 
     url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/inquire-balance"
+
     headers = {
-        "authorization": f"Bearer {token}",
         "appkey": APP_KEY,
         "appsecret": APP_SECRET,
         "tr_id": "TTTS3012R",
@@ -129,26 +128,43 @@ def get_overseas_avg_price(ticker: str):
         "CTX_AREA_NK200": ""
     }
 
-    res = _kis_request(
-        method="GET",
-        url=url,
-        headers=headers,
-        params=params
-    )
+    # 🔥 네트워크 일시 오류 대비 재시도 1회
+    for i in range(2):
+        try:
+            # 🔥 _kis_request 내부에서
+            # 1) 토큰 자동 발급
+            # 2) 401 발생 시 자동 재발급 후 재시도
+            res = _kis_request(
+                method="GET",
+                url=url,
+                headers=headers,
+                params=params
+            )
 
-    res.raise_for_status()
-    data = res.json()
+            data = res.json()
+            print("KIS RAW:", data)
 
-    print("KIS RAW:", data)
+            break  # 🔥 성공 시 루프 탈출
 
-    # ✅ 종목별 보유 내역은 output1
+        except Exception as e:
+            print("KIS balance 조회 실패:", e)
+            time.sleep(1)
+
+    else:
+        # 🔥 2회 모두 실패 시
+        raise RuntimeError("KIS 잔고 조회 2회 실패")
+
+    # ==============================
+    # ✅ 종목별 보유 내역 파싱
+    # ==============================
+
     items = data.get("output1") or []
     target = ticker.upper()
 
     for item in items:
         ovrs_pdno = item.get("ovrs_pdno", "").upper()
         qty = float(item.get("ovrs_cblc_qty", 0))
-        sellable = float(item.get("ord_psbl_qty", 0))  # ← 이 필드가 맞음
+        sellable = float(item.get("ord_psbl_qty", 0))  # 🔥 실제 매도 가능 수량
 
         if qty <= 0:
             continue
@@ -163,6 +179,7 @@ def get_overseas_avg_price(ticker: str):
                 "excg": item.get("ovrs_excg_cd"),
             }
 
+    # 🔥 해당 종목 미보유
     return {
         "found": False,
         "avg_price": 0,
@@ -171,17 +188,13 @@ def get_overseas_avg_price(ticker: str):
         "total_cost": 0,
         "excg": None
     }
-    
+
 def get_overseas_buying_power(ticker="AAPL", price="1"):
-
-    token = get_access_token()
-    CANO, ACNT = ACCOUNT_NO.split("-")
-
     url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/inquire-psamount"
 
     headers = {
+        # 🔥 authorization 제거 ( _kis_request 내부에서 자동 추가 )
         "Content-Type": "application/json; charset=utf-8",
-        "authorization": f"Bearer {token}",
         "appkey": APP_KEY,
         "appsecret": APP_SECRET,
         "tr_id": "TTTS3007R",   # 🔥 실계좌
@@ -191,26 +204,44 @@ def get_overseas_buying_power(ticker="AAPL", price="1"):
     params = {
         "CANO": CANO,
         "ACNT_PRDT_CD": ACNT,
-        "OVRS_EXCG_CD": "NASD",   # 🔥 나스닥 기준
-        "OVRS_ORD_UNPR": "1",   # 🔥 임시 주문단가 (1달러로 넣으면 됨)
-        "ITEM_CD": "AAPL"        # 🔥 아무 해외종목 하나
+        "OVRS_EXCG_CD": "NASD",     # 🔥 나스닥 기준
+        "OVRS_ORD_UNPR": price,     # 🔥 외부에서 받은 price 사용
+        "ITEM_CD": ticker           # 🔥 외부에서 받은 ticker 사용
     }
 
-    res = _kis_request(
-        method="GET",
-        url=url,
-        headers=headers,
-        params=params
-    )
-    res.raise_for_status()
-    data = res.json()
+    # 🔥 네트워크 일시 오류 대비 재시도 1회
+    for i in range(2):
+        try:
+            # 🔥 내부에서
+            # 1) 토큰 자동 발급
+            # 2) 401 발생 시 자동 재발급 후 재시도
+            res = _kis_request(
+                method="GET",
+                url=url,
+                headers=headers,
+                params=params
+            )
+
+            data = res.json()
+            break  # 🔥 성공 시 루프 탈출
+
+        except Exception as e:
+            print("KIS 매수 가능 금액 조회 실패:", e)
+            time.sleep(1)
+
+    else:
+        # 🔥 2회 모두 실패
+        raise RuntimeError("KIS 매수 가능 금액 조회 2회 실패")
+
+    # ==============================
+    # ✅ 응답 코드 확인
+    # ==============================
 
     if data.get("rt_cd") != "0":
         print("❌ KIS 오류:", data)
         return 0.0
 
     output = data.get("output") or {}
-
     buying_power = float(output.get("ovrs_ord_psbl_amt", 0))
 
     return buying_power
@@ -224,18 +255,19 @@ def order_overseas_stock(
     qty: int,
     side: str   # "buy" | "sell"
 ):
-    token = get_access_token()
     CANO, ACNT = ACCOUNT_NO.split("-")
     is_buy = side == "buy"
-    
-    # 거래소 코드 (NAS / NYSE / AMEX)
+
+    # 🔥 거래소 코드 자동 판별
     excg_cd = get_kis_exchange_code(ticker)
 
-    # ✅ 미국 실전 TR_ID
+    # 🔥 미국 실계좌 TR_ID
     tr_id = "TTTT1002U" if is_buy else "TTTT1006U"
 
+    url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/order"
+
     headers = {
-        "authorization": f"Bearer {token}",
+        # 🔥 authorization 제거 (_kis_request 내부에서 자동 추가)
         "appkey": APP_KEY,
         "appsecret": APP_SECRET,
         "tr_id": tr_id,
@@ -251,7 +283,7 @@ def order_overseas_stock(
         "ORD_QTY": str(qty),
 
         # 🔥 주문 방식
-        # 매수: LOC / 매도: 지정가
+        # 매수: LOC(34) / 매도: 지정가(00)
         "ORD_DVSN": "34" if is_buy else "00",
 
         # 🔥 해외주식 주문 가격 필드
@@ -261,35 +293,53 @@ def order_overseas_stock(
         "ORD_SVR_DVSN_CD": "0"
     }
 
-    url = f"{BASE_URL}/uapi/overseas-stock/v1/trading/order"
+    # 🔥 네트워크 일시 오류 대비 재시도 1회
+    for i in range(2):
+        try:
+            # 🔥 내부에서:
+            # 1) 토큰 자동 발급
+            # 2) 401 발생 시 자동 재발급 후 재시도
+            res = _kis_request(
+                method="POST",
+                url=url,
+                headers=headers,
+                json=body
+            )
 
-    res = _kis_request(
-        method="POST",
-        url=url,
-        headers=headers,
-        json=body
-    )
+            print("===== KIS ORDER DEBUG =====")
+            print("STATUS:", res.status_code)
+            print("URL:", url)
+            print("HEADERS:", headers)
+            print("BODY:", body)
 
-    print("===== KIS ORDER DEBUG =====")
-    print("STATUS:", res.status_code)
-    print("URL:", url)
-    print("HEADERS:", headers)
-    print("BODY:", body)
+            try:
+                resp_json = res.json()
+                print("RESPONSE JSON:", resp_json)
+            except Exception:
+                resp_json = None
+                print("RESPONSE TEXT:", res.text)
 
-    # ✅ response body는 딱 한 번만 읽는다
-    try:
-        resp_json = res.json()
-        print("RESPONSE JSON:", resp_json)
-    except Exception:
-        resp_json = None
-        print("RESPONSE TEXT:", res.text)
+            print("==========================")
 
-    print("==========================")
+            # 🔥 KIS 업무 오류 코드 체크
+            if not resp_json or resp_json.get("rt_cd") != "0":
+                raise RuntimeError(
+                    f"KIS 주문 실패: {resp_json}"
+                )
 
-    # 상태 코드 체크
-    res.raise_for_status()
-    
-    return resp_json
+            return resp_json  # 🔥 정상 주문 성공
+
+        except requests.exceptions.RequestException as e:
+            print("KIS 네트워크 오류:", e)
+            time.sleep(1)
+
+        except Exception as e:
+            print("KIS 주문 로직 오류:", e)
+            time.sleep(1)
+
+    # 🔥 2회 모두 실패
+    raise RuntimeError("KIS 주문 2회 실패")
+
 
 def sell_all_overseas_stock(ticker: str, price: float):
     info = get_overseas_avg_price(ticker)
