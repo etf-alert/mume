@@ -312,12 +312,6 @@ def require_login_page(request: Request):
         return payload.get("sub")
     except JWTError:
         return None
-def get_next_n_trading_days(start_date, n):
-    schedule = nyse.schedule(
-        start_date=start_date,
-        end_date=start_date + timedelta(days=n * 2)
-    )
-    return list(schedule.index[:n])
     
 def calculate_execute_at_from_market_open(
     execute_after_minutes: int,
@@ -731,26 +725,60 @@ def get_finviz_rsi(ticker: str):
         for i in range(0, len(cells), 2):
             data[cells[i].text.strip()] = cells[i + 1].text.strip()
     return float(data["RSI (14)"]), data["Change"]
+
+def get_rsi_baseline(ticker: str, db):
+    res = (
+        db.table("rsi_history")
+        .select("day, rsi, price")
+        .eq("ticker", ticker.upper())
+        .order("day", desc=True)
+        .limit(2)
+        .execute()
+    )
+
+    rows = res.data or []
+
+    if len(rows) < 2:
+        return None  # 데이터 부족
+
+    latest = rows[0]
+    previous = rows[1]
+
+    return {
+        "baseline_day": previous["day"],
+        "baseline_rsi": float(previous["rsi"]),
+        "latest_day": latest["day"],
+        "latest_rsi": float(latest["rsi"]),
+    }
+
 # =====================
 # Watchlist 화면용
 # =====================  
 def get_rsi_from_history(ticker: str):
     """
-    rsi_history 테이블 기준 (전일 대비 계산용)
+    rsi_history 기준
+    항상 직전 거래일 RSI 반환
     """
     res = (
         supabase_admin
         .table("rsi_history")
         .select("day, rsi")
-        .eq("ticker", ticker)
+        .eq("ticker", ticker.upper())
         .order("day", desc=True)
-        .limit(1)
+        .limit(2)
         .execute()
     )
+
     rows = res.data or []
-    if not rows:
-        return None
-    return float(rows[0]["rsi"])
+
+    if len(rows) < 2:
+        return None  # 데이터 부족
+
+    # rows[0] = 최신
+    # rows[1] = 직전 거래일 (기준)
+    return float(rows[1]["rsi"])
+
+    
 def get_watchlist_item(ticker: str):
     # =====================
     # 가격
@@ -777,19 +805,15 @@ def get_watchlist_item(ticker: str):
     # =====================
     # RSI 증감 계산 (절대 null 안 나오게)
     # =====================
-    if realtime_rsi is None:
-        realtime_rsi = 0.0           # ✅ 안전 처리
+    prev_rsi = get_rsi_from_history(ticker)
+
+    if prev_rsi is None or realtime_rsi is None:
         rsi_change = 0.0
         rsi_change_pct = 0.0
     else:
-        if prev_rsi == 0:
-            rsi_change = 0.0         # ✅ 분모 0 방지
-            rsi_change_pct = 0.0
-        else:
-            rsi_change = round(realtime_rsi - prev_rsi, 2)
-            rsi_change_pct = round(
-                (rsi_change / prev_rsi) * 100, 2
-            )
+        rsi_change = round(realtime_rsi - prev_rsi, 2)
+        rsi_change_pct = round((rsi_change / prev_rsi) * 100, 2)
+
     item = {
         "ticker": ticker,
         # 💰 가격
@@ -806,6 +830,7 @@ def get_watchlist_item(ticker: str):
         "rsi_change_pct": rsi_change_pct,
     }
     return item
+    
 def cleanup_order_cache():
     now = datetime.now(UTC)
     expired = [
@@ -814,62 +839,47 @@ def cleanup_order_cache():
     ]
     for k in expired:
         ORDER_CACHE.pop(k, None)
+        
 # =====================
 # Cron 저장
 # =====================
 @app.post("/cron/save")
 def cron_save(request: Request):
-    schedule = nyse.schedule(...)
-    if schedule.empty:
-        return {"status": "holiday"}
-    
-    close_time = schedule.iloc[0]["market_close"]
-    
-    if not (close_time + timedelta(minutes=3)
-            <= now
-            <= close_time + timedelta(minutes=10)):
-        return {"status": "not close window"}
 
-    # =====================
-    # 🔐 Header에서 secret 추출
-    # =====================
-    secret = request.headers.get("X-CRON-KEY")
-
-    # =====================
-    # 🔐 시크릿 체크
-    # =====================
-    if secret != os.getenv("CRON_SECRET"):
+    # 🔐 Secret 체크 먼저
+    if request.headers.get("X-CRON-KEY") != os.getenv("CRON_SECRET"):
         raise HTTPException(status_code=403, detail="Forbidden")
+
     now = datetime.now(ny_tz)
+    today = now.date()
 
-    schedule = nyse.schedule(
-        start_date=now.date(),
-        end_date=now.date()
-    )
-
+    # 📅 거래일 확인
+    schedule = nyse.schedule(start_date=today, end_date=today)
     if schedule.empty:
         return {"status": "holiday"}
 
     close_time = schedule.iloc[0]["market_close"].to_pydatetime()
 
+    # ⏰ 장 마감 후 3~8분 사이만 허용
     if not (close_time + timedelta(minutes=3)
             <= now
             <= close_time + timedelta(minutes=8)):
         return {"status": "not close window"}
 
-    today = now.date().isoformat()
-
+    # =====================
+    # 📌 watchlist 조회
+    # =====================
     res = supabase_admin.table("watchlist").select("ticker").execute()
-    watchlist_rows = res.data or []
-    tickers = [r["ticker"] for r in watchlist_rows]
+    tickers = [r["ticker"] for r in (res.data or [])]
 
     if not tickers:
         return {"status": "no tickers"}
 
-    # 🔥 FIX: yf.download 멀티티커 안전 처리
-    tickers_str = " ".join(tickers)
+    # =====================
+    # 📊 가격 다운로드
+    # =====================
     data = yf.download(
-        tickers_str,
+        " ".join(tickers),
         period="1d",
         group_by="ticker",
         progress=False
@@ -879,48 +889,33 @@ def cron_save(request: Request):
 
     for t in tickers:
         try:
-            # =====================
-            # 📊 Finviz RSI
-            # =====================
             rsi, _ = get_finviz_rsi(t)
-
             if rsi is None:
-                print("⚠️ rsi None:", t)
                 continue
 
-            # =====================
-            # 💰 Yahoo 종가 추출
-            # 🔥 FIX: 단일/멀티 ticker 구조 모두 대응
-            # =====================
             if len(tickers) == 1:
                 if data.empty:
-                    print("⚠️ no price data:", t)
                     continue
                 price = float(data["Close"].iloc[-1])
             else:
                 if t not in data or data[t].empty:
-                    print("⚠️ no price data:", t)
                     continue
                 price = float(data[t]["Close"].iloc[-1])
 
             rows.append({
                 "ticker": t.upper(),
-                "day": today,
+                "day": today.isoformat(),
                 "rsi": round(float(rsi), 2),
                 "price": round(price, 2),
             })
 
-            time.sleep(0.6)  # 🔥 FIX: Finviz 보호용 유지
+            time.sleep(0.6)
 
         except Exception as e:
-            print("❌ cron_save error:", t, e)
+            print("cron_save error:", t, e)
 
     if not rows:
-        return {
-            "status": "no data",
-            "day": today,
-            "rows_count": 0
-        }
+        return {"status": "no data", "day": today.isoformat()}
 
     supabase_admin.table("rsi_history").upsert(
         rows,
@@ -929,10 +924,9 @@ def cron_save(request: Request):
 
     return {
         "saved": [r["ticker"] for r in rows],
-        "day": today,
+        "day": today.isoformat(),
         "rows_count": len(rows)
     }
-
 
 # =====================
 # 🔥 예약 주문 삭제 API
