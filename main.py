@@ -209,6 +209,16 @@ def cron_execute_reservations(request: Request):
                 "error": None
             }).eq("id", o["id"]).execute()
 
+            try:
+                send_order_success_telegram(
+                    order=o,
+                    executed_price=preview["price"],
+                    executed_qty=order_qty,
+                    executed_at=now,
+                    kis_msg=kis_res.get("msg1") if isinstance(kis_res, dict) else None,
+                    db=supabase_admin
+                )
+
         except Exception as e:
             error_msg = str(e)
             current_retry = o.get("retry_count", 0)
@@ -1129,9 +1139,6 @@ def chart_data(ticker: str, user=Depends(get_current_user)):
         "price_source": p["price_source"],
     }
     
-# =====================
-# 🔧 FIX: executed_at 명시적으로 받기
-# =====================
 def send_order_success_telegram(
     order: dict,
     executed_price: float,
@@ -1140,41 +1147,96 @@ def send_order_success_telegram(
     db,
     kis_msg: str | None = None,
 ):
+    # =========================
+    # 🔥 반복 회차 총 개수 조회
+    # =========================
     total = get_repeat_total(db, order["repeat_group"])
+
+    # 🔥 실행 시각 문자열 변환
     executed_at_str = executed_at.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+
+    # =========================
+    # 🔥 side 한글 매핑
+    # =========================
+    side_map = {
+        "BUY_MARKET": "큰 수 매수 (LOC)",
+        "BUY_AVG": "평단가 매수 (LOC)",
+        "SELL": "평단가+10% 매도",
+    }
+
+    side_label = side_map.get(order["side"], order["side"])
+
+    # =========================
+    # 🔥 매수/매도 금액 라벨 구분
+    # =========================
+    amount_label = "매수액" if order["side"].startswith("BUY") else "매도금액"
+
+    total_amount = executed_price * executed_qty
+
+    # =========================
+    # 🔥 메시지 구성
+    # =========================
     message = (
         "✅ 예약 주문 성공\n\n"
         f"종목: {order['ticker']}\n"
-        f"구분: {order['side']}\n"
-        f"지정가: ${executed_price}\n"
+        f"구분: {side_label}\n"
+        f"지정가: ${executed_price:,.2f}\n"
         f"수량: {executed_qty} 주\n"
-        f"매수액: ${executed_price * executed_qty:,.2f}\n\n"
+        f"{amount_label}: ${total_amount:,.2f}\n\n"
         f"회차: {order['repeat_index']}/{total}\n"
         f"실행 시각: {executed_at_str}"
     )
+
+    # 🔥 KIS 메시지 추가 (있을 경우만)
     if kis_msg:
         message += f"\nKIS: {kis_msg}"
-        
+
     send_telegram_message(message)
-    
+
+
 def send_order_fail_telegram(order: dict, error_msg: str, db):
+    # =========================
+    # 🔥 반복 회차 총 개수 조회
+    # =========================
     total = get_repeat_total(db, order["repeat_group"])
+
+    # =========================
     # 🔥 execute_after 안전 처리
+    # =========================
     execute_after = order.get("execute_after")
+
     if execute_after:
         execute_after = datetime.fromisoformat(execute_after)
         execute_after_str = execute_after.astimezone().strftime("%Y-%m-%d %H:%M:%S")
     else:
         execute_after_str = "N/A"
+
+    # =========================
+    # 🔥 side 한글 매핑
+    # =========================
+    side_map = {
+        "BUY_MARKET": "큰 수 매수 (LOC)",
+        "BUY_AVG": "평단가 매수 (LOC)",
+        "SELL": "평단가+10% 매도",
+    }
+
+    side_label = side_map.get(order["side"], order["side"])
+
+    # =========================
+    # 🔥 메시지 구성
+    # =========================
     message = (
         "❌ 예약 주문 실패\n\n"
         f"종목: {order['ticker']}\n"
-        f"구분: {order['side']}\n"
+        f"구분: {side_label}\n"
         f"사유: {error_msg}\n\n"
         f"회차: {order['repeat_index']}/{total}\n"
         f"실행 예정 시각: {execute_after_str}"
     )
-    
+    # 🔥 KIS 메시지 추가 (있을 경우만)
+    if kis_msg:
+        message += f"\nKIS: {kis_msg}"
+
     send_telegram_message(message)
     
 @app.get("/reservations")
