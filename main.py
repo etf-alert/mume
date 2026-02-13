@@ -811,36 +811,40 @@ def cron_execute_reservations(secret: str = Query(...)):
 
     now = datetime.now(timezone.utc)
 
+    # ==========================================================
+    # 🔥 실행 대상 조회
+    # - PENDING
+    # - execute_after <= now
+    # - repeat_index 낮은 순서대로
+    # ==========================================================
     res = (
         supabase_admin
         .table("queued_orders")
         .select("*")
         .eq("status", "PENDING")
         .lte("execute_after", now.isoformat())
+        .order("repeat_index")
         .execute()
     )
 
     for o in res.data or []:
         try:
-
-            # ❌ 삭제: 현재 시점 장 체크 제거 (밀림 방지)
-            # if not is_us_market_open():
-            #     continue
-
+            # ==================================================
+            # 🔥 실시간 계좌 조회
+            # ==================================================
             pos = get_overseas_avg_price(o["ticker"])
             if not pos.get("found"):
                 raise RuntimeError("보유 종목 없음")
 
             avg_price = float(pos.get("avg_price", 0))
-            qty = float(pos.get("qty", 0))
             sellable_qty = float(pos.get("sellable_qty", 0))
-
-            if o["side"] == "SELL" and sellable_qty <= 0:
-                raise RuntimeError("매도 가능 수량 없음")
 
             if avg_price <= 0:
                 raise RuntimeError("평균단가 없음")
 
+            # ==================================================
+            # 🔥 현재가 조회 + preview 계산
+            # ==================================================
             current_price = resolve_prices(o["ticker"])["base_price"]
 
             preview = build_order_preview({
@@ -853,7 +857,12 @@ def cron_execute_reservations(secret: str = Query(...)):
 
             side = "buy" if o["side"].startswith("BUY") else "sell"
 
+            # ==================================================
+            # 🔥 SELL은 실시간 전량 매도
+            # ==================================================
             if side == "sell":
+                if sellable_qty <= 0:
+                    raise RuntimeError("매도 가능 수량 없음")
                 order_qty = int(sellable_qty)
             else:
                 order_qty = preview["qty"]
@@ -861,6 +870,9 @@ def cron_execute_reservations(secret: str = Query(...)):
             if order_qty <= 0:
                 raise RuntimeError("주문 수량 0")
 
+            # ==================================================
+            # 🔥 실제 주문 실행
+            # ==================================================
             kis_res = order_overseas_stock(
                 ticker=o["ticker"],
                 price=preview["price"],
@@ -873,35 +885,14 @@ def cron_execute_reservations(secret: str = Query(...)):
                     f"[KIS] {kis_res.get('msg_cd')} - {kis_res.get('msg1')}"
                 )
 
-            # ==========================================
-            # 🔥 성공 시: repeat_current +1
-            # ==========================================
-
-            repeat_total = o.get("repeat_total", 1)
-            repeat_current = o.get("repeat_current", 1)
-
-            new_current = repeat_current + 1
-
-            if new_current > repeat_total:
-                # 🔥 모든 반복 완료
-                supabase_admin.table("queued_orders").update({
-                    "status": "DONE",
-                    "executed_at": now.isoformat(),
-                    "repeat_current": repeat_total
-                }).eq("id", o["id"]).execute()
-
-            else:
-                # 🔥 다음 영업일로 재예약
-                next_execute = calculate_execute_at_from_market_open(
-                    execute_after_minutes=o["execute_after_minutes"]
-                )
-
-                supabase_admin.table("queued_orders").update({
-                    "repeat_current": new_current,
-                    "execute_after": next_execute.isoformat(),
-                    "executed_at": now.isoformat(),
-                    "status": "PENDING"
-                }).eq("id", o["id"]).execute()
+            # ==================================================
+            # ✅ 성공 시: DONE 처리
+            # ==================================================
+            supabase_admin.table("queued_orders").update({
+                "status": "DONE",
+                "executed_at": now.isoformat(),
+                "error": None
+            }).eq("id", o["id"]).execute()
 
             send_order_success_telegram(
                 order=o,
@@ -913,22 +904,23 @@ def cron_execute_reservations(secret: str = Query(...)):
             )
 
         except Exception as e:
-            # ==========================================
-            # 🔥 실패 시: 회차 유지 + 다음 영업일 재시도
-            # ==========================================
-
+            # ==================================================
+            # 🔥 실패 시
+            # - 회차 유지
+            # - 다음 영업일로 execute_after 이동
+            # - status는 PENDING 유지
+            # ==================================================
             next_date = datetime.now(ny_tz).date() + timedelta(days=1)
 
             next_execute = calculate_execute_at_from_market_open(
                 execute_after_minutes=o["execute_after_minutes"],
-                base_date=next_date  # 🔥 핵심
+                base_date=next_date
             )
 
             supabase_admin.table("queued_orders").update({
-                # 🔥 반드시 UTC로 저장
                 "execute_after": next_execute.astimezone(timezone.utc).isoformat(),
                 "error": str(e),
-                "status": "PENDING"  # ERROR로 두지 않음
+                "status": "PENDING"
             }).eq("id", o["id"]).execute()
 
             send_order_fail_telegram(
@@ -937,41 +929,10 @@ def cron_execute_reservations(secret: str = Query(...)):
                 db=supabase_admin
             )
 
-    return {"status": "ok"}
-
-    # ===============================
-    # DONE 최근 3000개만 유지
-    # ===============================
-    done_limit = 3000
-    done_res = (
-        supabase_admin
-        .table("queued_orders")
-        .select("id")
-        .eq("status", "DONE")
-        .order("created_at", desc=True)
-        .execute()
-    )
-    done_rows = done_res.data or []
-    if len(done_rows) > done_limit:
-        delete_ids = [r["id"] for r in done_rows[done_limit:]]
-        supabase_admin.table("queued_orders").delete().in_("id", delete_ids).execute()
-
-    # ===============================
-    # ERROR 최근 500개만 유지
-    # ===============================
-    error_limit = 500
-    error_res = (
-        supabase_admin
-        .table("queued_orders")
-        .select("id")
-        .eq("status", "ERROR")
-        .order("created_at", desc=True)
-        .execute()
-    )
-    error_rows = error_res.data or []
-    if len(error_rows) > error_limit:
-        delete_ids = [r["id"] for r in error_rows[error_limit:]]
-        supabase_admin.table("queued_orders").delete().in_("id", delete_ids).execute()
+    # ==========================================================
+    # 🔥 DONE 최근 3000개만 유지, ERROR 최근 500개만 유지 (DB 단일 쿼리, race safe)
+    # ==========================================================
+    supabase_admin.rpc("cleanup_queued_orders").execute()
 
     return {"status": "ok"}
 
