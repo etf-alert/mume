@@ -984,21 +984,53 @@ def delete_ticker(ticker: str):
         .eq("ticker", t)\
         .execute()
     return {"removed": t}
+    
 @app.get("/watchlist")
 def watchlist():
-    res = supabase_admin.table("watchlist").select("ticker").execute()
-    rows = res.data or []
-    is_open = is_us_market_open()
-    next_open = next_market_open()
+    try:
+        # 🔥 FIX: DB 조회 예외 보호
+        res = supabase_admin.table("watchlist").select("ticker").execute()
+        rows = res.data or []
+    except Exception as e:
+        print("watchlist DB error:", e)
+        return {
+            "market_open": False,
+            "next_open": None,
+            "items": []
+        }
+
+    # 🔥 FIX: market open 계산도 보호
+    try:
+        is_open = is_us_market_open()
+        next_open = next_market_open()
+    except Exception as e:
+        print("market status error:", e)
+        is_open = False
+        next_open = None
+
     result = []
+
     for r in rows:
-        result.append(get_watchlist_item(r["ticker"]))
-    result.sort(key=lambda x: x["rsi"] if x["rsi"] is not None else 999)
+        ticker = r["ticker"]
+        try:
+            # 🔥 FIX: 개별 종목 단위로 예외 보호
+            item = get_watchlist_item(ticker)
+            result.append(item)
+        except Exception as e:
+            print("watchlist item error:", ticker, e)
+            continue  # 하나 터져도 전체 안 죽게
+
+    # 🔥 FIX: 정렬 시 None 안전 처리
+    result.sort(
+        key=lambda x: x.get("rsi") if x.get("rsi") is not None else 999
+    )
+
     return {
         "market_open": is_open,
         "next_open": next_open.isoformat() if next_open else None,
         "items": result
     }
+
     
 @app.get("/api/avg-price/{ticker}")
 def avg_price(ticker: str):
