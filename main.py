@@ -193,9 +193,7 @@ def cron_execute_reservations(secret: str = Query(...)):
             }).eq("id", o["id"]).execute()
 
         except Exception as e:
-            # ==================================================
-            # 🔥 실패 시 하루 밀림 + 그룹 이후 회차도 밀기
-            # ==================================================
+
             next_date = datetime.now(ny_tz).date() + timedelta(days=1)
 
             original_dt = datetime.fromisoformat(
@@ -212,22 +210,29 @@ def cron_execute_reservations(secret: str = Query(...)):
                 base_date=next_date
             )
 
-            # 현재 row 밀기
+            # 🔥 현재 row 하루 밀기
             supabase_admin.table("queued_orders").update({
                 "execute_after": next_execute.astimezone(
                     timezone.utc
                 ).isoformat(),
                 "error": str(e),
-                "status": "PENDING"
+                "status": "PENDING",
+                "retry_count": o.get("retry_count", 0) + 1  # 🔥 추가
             }).eq("id", o["id"]).execute()
 
-            # ==================================================
-            # 🔥 FIX 2: 같은 그룹 이후 회차도 하루씩 밀기
-            # ==================================================
+            # =====================================================
+            # 🔥 여기 추가 (같은 그룹 이후 회차도 하루 밀기)
+            # =====================================================
             supabase_admin.rpc("shift_group_forward", {
                 "p_repeat_group": o["repeat_group"],
                 "p_repeat_index": o["repeat_index"]
             })
+
+            send_order_fail_telegram(
+                order=o,
+                error_msg=str(e),
+                db=supabase_admin
+            )
 
     supabase_admin.rpc("cleanup_queued_orders").execute()
     return {"status": "ok"}
