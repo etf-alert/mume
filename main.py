@@ -226,7 +226,7 @@ def cron_execute_reservations(secret: str = Query(...)):
             supabase_admin.rpc("shift_group_forward", {
                 "p_repeat_group": o["repeat_group"],
                 "p_repeat_index": o["repeat_index"]
-            })
+            }).execute()
 
             send_order_fail_telegram(
                 order=o,
