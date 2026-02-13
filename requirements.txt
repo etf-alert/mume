@@ -10,4 +10,3 @@ python-dotenv
 pandas_market_calendars
 alpaca-py
 supabase
-apscheduler
