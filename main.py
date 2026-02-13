@@ -194,50 +194,67 @@ def cron_execute_reservations(secret: str = Query(...)):
             }).eq("id", o["id"]).execute()
 
         except Exception as e:
+                current_retry = o.get("retry_count", 0)
 
-            next_date = datetime.now(ny_tz).date() + timedelta(days=1)
+                # 🔥 1️⃣ 장 시작 직후 일시 오류 대비 재시도 (최대 3회)
+                if current_retry < 3:
+                    print("🔁 일시 오류 → 30초 뒤 재시도")
+            
+                    retry_time = datetime.now(timezone.utc) + timedelta(seconds=30)
+            
+                    supabase_admin.table("queued_orders").update({
+                        "execute_after": retry_time.isoformat(),
+                        "retry_count": current_retry + 1,
+                        "status": "PENDING",
+                        "error": str(e)
+                    }).eq("id", o["id"]).execute()
+            
+                    continue  # 🔥 하루 밀지 않고 다음 루프로
 
-            original_dt = datetime.fromisoformat(
-                o["execute_after"]
-            ).astimezone(ny_tz)
 
-            minutes_from_open = int(
-                (original_dt - next_market_open(original_dt.date()))
-                .total_seconds() / 60
-            )
-
-            next_execute = calculate_execute_at_from_market_open(
-                execute_after_minutes=minutes_from_open,
-                base_date=next_date
-            )
-
-            # 🔥 현재 row 하루 밀기
-            supabase_admin.table("queued_orders").update({
-                "execute_after": next_execute.astimezone(
-                    timezone.utc
-                ).isoformat(),
-                "error": str(e),
-                "status": "PENDING",
-                "retry_count": o.get("retry_count", 0) + 1  # 🔥 추가
-            }).eq("id", o["id"]).execute()
-
-            # =====================================================
-            # 🔥 여기 추가 (같은 그룹 이후 회차도 하루 밀기)
-            # =====================================================
-            supabase_admin.rpc("shift_group_forward", {
-                "p_repeat_group": o["repeat_group"],
-                "p_repeat_index": o["repeat_index"]
-            }).execute()
-
-            send_order_fail_telegram(
-                order=o,
-                error_msg=str(e),
-                db=supabase_admin
-            )
+                # 🔥 2️⃣ 3회 초과 시 하루 밀기 (기존 로직)
+                next_date = datetime.now(ny_tz).date() + timedelta(days=1)
+    
+                original_dt = datetime.fromisoformat(
+                    o["execute_after"]
+                ).astimezone(ny_tz)
+    
+                minutes_from_open = int(
+                    (original_dt - next_market_open(original_dt.date()))
+                    .total_seconds() / 60
+                )
+    
+                next_execute = calculate_execute_at_from_market_open(
+                    execute_after_minutes=minutes_from_open,
+                    base_date=next_date
+                )
+    
+                # 🔥 현재 row 하루 밀기
+                supabase_admin.table("queued_orders").update({
+                    "execute_after": next_execute.astimezone(
+                        timezone.utc
+                    ).isoformat(),
+                    "error": str(e),
+                    "status": "PENDING",
+                    "retry_count": o.get("retry_count", 0) + 1  # 🔥 추가
+                }).eq("id", o["id"]).execute()
+    
+                # =====================================================
+                # 🔥 여기 추가 (같은 그룹 이후 회차도 하루 밀기)
+                # =====================================================
+                supabase_admin.rpc("shift_group_forward", {
+                    "p_repeat_group": o["repeat_group"],
+                    "p_repeat_index": o["repeat_index"]
+                }).execute()
+    
+                send_order_fail_telegram(
+                    order=o,
+                    error_msg=str(e),
+                    db=supabase_admin
+                )
 
     supabase_admin.rpc("cleanup_queued_orders").execute()
     return {"status": "ok"}
-
 
 # =====================
 # Auth utils
