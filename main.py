@@ -1231,7 +1231,7 @@ def send_order_fail_telegram(order: dict, error_msg: str, db):
         f"구분: {side_label}\n"
         f"사유: {error_msg}\n\n"
         f"회차: {order['repeat_index']}/{total}\n"
-        f"실행 예정 시각: {execute_after_str}"
+        f"실행 시각: {execute_after_str}"
     )
     # 🔥 KIS 메시지 추가 (있을 경우만)
     if kis_msg:
