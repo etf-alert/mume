@@ -104,7 +104,6 @@ def send_telegram_message(text: str):
     except Exception as e:
         print("❌ Telegram exception:", e)
 
-
 @app.post("/cron/execute-reservations")
 def cron_execute_reservations(request: Request):
     # 🔒 미국 장 열렸는지 먼저 체크
@@ -112,13 +111,10 @@ def cron_execute_reservations(request: Request):
         print("📴 미국 장 마감/휴장 - cron 실행 안함")
         return {"status": "market closed"}
 
-    # 🔐 Header에서 secret 추출
-    secret = request.headers.get("X-CRON-KEY")
-
     # 🔐 secret 검증
-    if secret != os.getenv("CRON_SECRET"):
+    if request.headers.get("X-CRON-KEY") != os.getenv("CRON_SECRET"):
         raise HTTPException(status_code=403, detail="Forbidden")
-        
+
     now = datetime.now(timezone.utc)
 
     # ==========================================================
@@ -136,25 +132,19 @@ def cron_execute_reservations(request: Request):
 
     for o in res.data or []:
         try:
-            # ==================================================
-            # 🔥 FIX 1: 선점은 RUNNING으로 변경 (DONE ❌)
-            # ==================================================
+            # 🔥 선점 (RUNNING)
             lock = (
                 supabase_admin
                 .table("queued_orders")
-                .update({"status": "RUNNING"})  # ✅ 변경
+                .update({"status": "RUNNING"})
                 .eq("id", o["id"])
                 .eq("status", "PENDING")
                 .execute()
             )
-
             if not lock.data:
                 continue
 
-            # ==================================================
-            # 🔥 같은 그룹에서 더 낮은 index가 RUNNING이면 skip
-            # (그룹 순서 보장)
-            # ==================================================
+            # 🔥 그룹 순서 보장
             lower_running = (
                 supabase_admin
                 .table("queued_orders")
@@ -164,23 +154,19 @@ def cron_execute_reservations(request: Request):
                 .in_("status", ["PENDING", "RUNNING"])
                 .execute()
             )
-
             if lower_running.data:
-                # 선점 복구
                 supabase_admin.table("queued_orders").update({
                     "status": "PENDING"
                 }).eq("id", o["id"]).execute()
                 continue
 
-            # ================= 실제 주문 로직 그대로 =================
-
+            # ================= 실제 주문 =================
             pos = get_overseas_avg_price(o["ticker"])
             if not pos.get("found"):
                 raise RuntimeError("보유 종목 없음")
 
             avg_price = float(pos.get("avg_price", 0))
             sellable_qty = float(pos.get("sellable_qty", 0))
-
             current_price = resolve_prices(o["ticker"])["base_price"]
 
             preview = build_order_preview({
@@ -216,76 +202,96 @@ def cron_execute_reservations(request: Request):
                     f"[KIS] {kis_res.get('msg_cd')} - {kis_res.get('msg1')}"
                 )
 
-            # ==================================================
-            # ✅ 성공 시 DONE 처리 (여기서 DONE)
-            # ==================================================
+            # ✅ 성공 시 DONE
             supabase_admin.table("queued_orders").update({
-                "status": "DONE",  # ✅ 여기서만 DONE
+                "status": "DONE",
                 "executed_at": now.isoformat(),
                 "error": None
             }).eq("id", o["id"]).execute()
 
         except Exception as e:
-                current_retry = o.get("retry_count", 0)
+            error_msg = str(e)
+            current_retry = o.get("retry_count", 0)
+            now_utc = datetime.now(timezone.utc)
 
-                # 🔥 1️⃣ 장 시작 직후 일시 오류 대비 재시도 (최대 3회)
-                if current_retry < 3:
-                    print("🔁 일시 오류 → 30초 뒤 재시도")
-            
-                    retry_time = datetime.now(timezone.utc) + timedelta(seconds=30)
-            
-                    supabase_admin.table("queued_orders").update({
-                        "execute_after": retry_time.isoformat(),
-                        "retry_count": current_retry + 1,
-                        "status": "PENDING",
-                        "error": str(e)
-                    }).eq("id", o["id"]).execute()
-            
-                    continue  # 🔥 하루 밀지 않고 다음 루프로
+            # =====================================================
+            # 🔥 0️⃣ Rate Limit 전용 처리
+            # =====================================================
+            if "Too Many Requests" in error_msg or "rate" in error_msg.lower():
+                print("⏳ Rate limit → 15분 뒤 재시도")
 
+                retry_time = now_utc + timedelta(minutes=15)
 
-                # 🔥 2️⃣ 3회 초과 시 하루 밀기 (기존 로직)
-                next_date = datetime.now(ny_tz).date() + timedelta(days=1)
-    
-                original_dt = datetime.fromisoformat(
-                    o["execute_after"]
-                ).astimezone(ny_tz)
-    
-                minutes_from_open = int(
-                    (original_dt - next_market_open(original_dt.date()))
-                    .total_seconds() / 60
-                )
-    
-                next_execute = calculate_execute_at_from_market_open(
-                    execute_after_minutes=minutes_from_open,
-                    base_date=next_date
-                )
-    
-                # 🔥 현재 row 하루 밀기
                 supabase_admin.table("queued_orders").update({
-                    "execute_after": next_execute.astimezone(
-                        timezone.utc
-                    ).isoformat(),
-                    "error": str(e),
+                    "execute_after": retry_time.isoformat(),
                     "status": "PENDING",
-                    "retry_count": o.get("retry_count", 0) + 1  # 🔥 추가
+                    "retry_count": current_retry + 1,
+                    "error": error_msg
                 }).eq("id", o["id"]).execute()
-    
-                # =====================================================
-                # 🔥 여기 추가 (같은 그룹 이후 회차도 하루 밀기)
-                # =====================================================
-                supabase_admin.rpc("shift_group_forward", {
-                    "p_repeat_group": o["repeat_group"],
-                    "p_repeat_index": o["repeat_index"]
-                }).execute()
-    
-                send_order_fail_telegram(
-                    order=o,
-                    error_msg=str(e),
-                    db=supabase_admin
-                )
+
+                continue
+
+            # =====================================================
+            # 🔥 1️⃣ 일시 오류 → 30초 재시도 (최대 3회)
+            # =====================================================
+            if current_retry < 3:
+                print("🔁 일시 오류 → 30초 뒤 재시도")
+
+                retry_time = now_utc + timedelta(seconds=30)
+
+                supabase_admin.table("queued_orders").update({
+                    "execute_after": retry_time.isoformat(),
+                    "retry_count": current_retry + 1,
+                    "status": "PENDING",
+                    "error": error_msg
+                }).eq("id", o["id"]).execute()
+
+                continue
+
+            # =====================================================
+            # 🔥 2️⃣ 3회 초과 → 다음 거래일로 밀기
+            # =====================================================
+            next_date = datetime.now(ny_tz).date() + timedelta(days=1)
+
+            original_dt = datetime.fromisoformat(
+                o["execute_after"]
+            ).astimezone(ny_tz)
+
+            minutes_from_open = int(
+                (original_dt - next_market_open(original_dt.date()))
+                .total_seconds() / 60
+            )
+
+            next_execute = calculate_execute_at_from_market_open(
+                execute_after_minutes=minutes_from_open,
+                base_date=next_date
+            )
+
+            supabase_admin.table("queued_orders").update({
+                "execute_after": next_execute.astimezone(
+                    timezone.utc
+                ).isoformat(),
+                "error": error_msg,
+                "status": "PENDING",
+                "retry_count": current_retry + 1
+            }).eq("id", o["id"]).execute()
+
+            supabase_admin.rpc("shift_group_forward", {
+                "p_repeat_group": o["repeat_group"],
+                "p_repeat_index": o["repeat_index"]
+            }).execute()
+
+            send_order_fail_telegram(
+                order=o,
+                error_msg=error_msg,
+                db=supabase_admin
+            )
+
+        # 🔥 주문 간 rate limit 보호
+        time.sleep(1.2)
 
     supabase_admin.rpc("cleanup_queued_orders").execute()
+
     return {"status": "ok"}
 
 # =====================
