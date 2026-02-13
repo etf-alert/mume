@@ -157,7 +157,7 @@ def cron_execute_reservations(secret: str = Query(...)):
                 "current_price": current_price,
                 "seed": o["seed"],
                 "ticker": o["ticker"],
-                "qty_owned": pos.get("qty")
+                "qty_owned": pos.get("sellable_qty")
             })
 
             side = "buy" if o["side"].startswith("BUY") else "sell"
@@ -445,70 +445,94 @@ def build_order_preview(data: dict):
     side = data["side"]
     avg = float(data["avg_price"])
     cur = float(data["current_price"])
-    seed = float(data["seed"])
+    seed = float(data.get("seed") or 0)
+
     price_type = None
     message = None
     qty = None
+
     if side == "BUY_MARKET":
         price = round(min(avg * 1.05, cur * 1.15), 2)
         qty = int((seed / 80) // price)
         price_type = "LOC"
         message = "큰 수 매수 (LOC)"
-        
+
         if qty <= 0:
             raise ValueError("수량 0")
+
     elif side == "BUY_AVG":
         price = round(avg, 2)
         qty = int((seed / 80) // price)
         price_type = "LOC"
         message = "평단가 매수 (LOC)"
+
         if qty <= 0:
             raise ValueError("수량 0")
+
     elif side == "SELL":
-        qty_owned = float(data.get("qty_owned") or 0)
-        if qty_owned <= 0:
-            raise ValueError("매도 가능 수량 없음")
-    
         target = round(avg * 1.10, 2)
-    
+
         if cur > target:
             price = round(cur, 2)
             price_type = "MARKET_BETTER"
-            message = "목표가 초과 → 현재가로 매도"
+            message = "목표가 초과 → 현재가 매도"
         else:
             price = target
             price_type = "TARGET"
             message = "평단가+10% 매도"
-    
-        qty = int(qty_owned)
+
+        # 🔥 수량은 참고용 (있으면 표시)
+        qty_owned = float(data.get("qty_owned") or 0)
+        if qty_owned > 0:
+            qty = int(qty_owned)
 
     else:
         raise ValueError("invalid side")
+
     return {
         "price": price,
-        "qty": qty,
+        "qty": qty,  # SELL은 표시용
         "price_type": price_type,
         "message": message
     }
-    
+ 
 @app.post("/api/order/preview")
 def order_preview(
     data: dict,
     user: str = Depends(get_current_user)
 ):
     cleanup_order_cache()
+
     try:
-        preview = build_order_preview(data)  # 🔧 FIX
+        if data["side"] == "SELL":
+            pos = get_overseas_avg_price(data["ticker"])
+
+            if not pos or not pos.get("found"):
+                raise ValueError("보유 종목 없음")
+
+            sellable_qty = float(pos.get("sellable_qty") or 0)
+
+            if sellable_qty <= 0:
+                raise ValueError("매도 가능 수량 없음")
+
+            data["qty_owned"] = sellable_qty
+
+        preview = build_order_preview(data)
+
         order_id = str(uuid4())
+
         ORDER_CACHE[order_id] = {
             **preview,
             "side": data["side"],
             "ticker": data["ticker"],
             "created_at": datetime.now(UTC)
         }
+
         return {"order_id": order_id, **preview}
+
     except ValueError as e:
         raise HTTPException(400, str(e))
+
 @app.post("/api/order/execute/{order_id}")
 def execute_order(order_id: str, user: str = Depends(get_current_user)):
     order = ORDER_CACHE.get(order_id)
