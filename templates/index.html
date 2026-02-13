@@ -125,9 +125,11 @@
       font-weight: 600;
       display: flex;
       align-items: center;
+      justify-content: center;   /* ✅ 가운데 정렬 */
       gap: 4px;
+      position: relative;
     }
-    
+
     .small-badge {
       font-size: 9px;       /* 글자 작게 */
       padding: 1px 4px;     /* 안쪽 여백 줄임 */
@@ -486,14 +488,14 @@ async function loadData() {
 
     <td class="cell">
       <div class="price-close">
+        ${item.current_price}
         ${
           item.price_source === "CLOSE"
             ? `<span class="badge close small-badge">CLOSE</span>`
             : ``
         }
-        ${item.current_price}
       </div>
-
+      
       <div class="change ${item.current_change < 0 ? 'down' : 'up'}">
         (${item.current_change > 0 ? '+' : ''}${item.current_change},
          ${item.current_change_pct > 0 ? '+' : ''}${item.current_change_pct}%)
