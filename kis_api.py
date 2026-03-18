@@ -44,22 +44,30 @@ def get_kis_exchange_code(ticker: str) -> str:
 # =====================
 def get_access_token():
     now = time.time()
+
     if _token_cache["access_token"] and now < _token_cache["expire_at"]:
         return _token_cache["access_token"]
 
     url = f"{BASE_URL}/oauth2/tokenP"
+
+    headers = {
+        "Content-Type": "application/json"
+    }
+
     body = {
         "grant_type": "client_credentials",
         "appkey": APP_KEY,
         "appsecret": APP_SECRET
     }
 
-    res = requests.post(url, json=body)
+    res = requests.post(url, headers=headers, json=body)  # 🔥 headers 추가
     res.raise_for_status()
+
     j = res.json()
 
     _token_cache["access_token"] = j["access_token"]
     _token_cache["expire_at"] = now + j["expires_in"] - 60
+
     return j["access_token"]
 
 # =====================
